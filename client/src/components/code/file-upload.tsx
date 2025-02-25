@@ -54,11 +54,13 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
         }))
       });
 
+      // Get existing files to compare
+      const existingFiles = await fetch('/api/files').then(res => res.json());
+
       // Then process each file
       const results = [];
       for (const fileInfo of projectFiles) {
         // Check if file exists and has changed
-        const existingFiles = await fetch('/api/files').then(res => res.json());
         const existingFile = existingFiles.find((f: CodeFile) => f.name === fileInfo.name);
 
         if (existingFile && existingFile.hash === fileInfo.hash) {
@@ -79,6 +81,18 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
         const result = await res.json();
         results.push({ ...result, path: fileInfo.path });
       }
+
+      // Find files that were removed
+      const currentPaths = new Set(projectFiles.map(f => f.path));
+      const removedFiles = existingFiles.filter((f: CodeFile) => 
+        !currentPaths.has(f.path)
+      );
+
+      // Remove files that no longer exist in the new structure
+      for (const file of removedFiles) {
+        await apiRequest("DELETE", `/api/files/${file.id}`);
+      }
+
       return results;
     },
     onSuccess: (files) => {

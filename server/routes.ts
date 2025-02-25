@@ -87,6 +87,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Add DELETE endpoint for files
+  app.delete("/api/files/:id", async (req, res) => {
+    try {
+      const fileId = Number(req.params.id);
+      await storage.deleteCodeFile(fileId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting file:", error);
+      res.status(500).json({ error: "Failed to delete file" });
+    }
+  });
+
   // Test Cases
   app.post("/api/files/:id/tests", async (req, res) => {
     try {
