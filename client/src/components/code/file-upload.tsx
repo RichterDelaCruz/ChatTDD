@@ -177,7 +177,7 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
     onDrop,
     accept: {
       "text/*": [
-        ".js", ".jsx", ".ts", ".tsx", ".py", ".rb", ".php", 
+        ".js", ".jsx", ".ts", ".tsx", ".py", ".rb", ".php",
         ".java", ".go", ".rs", ".cs", ".cpp", ".c",
         ".html", ".css", ".scss", ".json", ".yaml", ".yml",
         ".md", ".sh", ".vue", ".svelte"
@@ -185,8 +185,6 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
     },
     multiple: true,
     noClick: false,
-    directory: true,
-    webkitdirectory: true,
     disabled: isProcessing
   });
 
@@ -202,7 +200,7 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
           ${isProcessing ? "opacity-50 cursor-wait" : "cursor-pointer"}
         `}
       >
-        <input {...getInputProps()} />
+        <input {...getInputProps()} directory="" webkitdirectory="" />
         <Upload className="h-12 w-12 text-muted-foreground mb-4" />
         <p className="text-center text-muted-foreground">
           {isProcessing
