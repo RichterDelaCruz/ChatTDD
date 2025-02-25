@@ -152,14 +152,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         messages: [{
           role: "system",
           content: `You are a Test-Driven Development expert. Help users write high-quality test cases.
-                   When generating test suggestions:
-                   1. Focus on one specific test case at a time
-                   2. Prioritize edge cases and error conditions
-                   3. Consider both expected behavior and potential failure modes
-                   4. Include setup, execution, and validation steps
-                   5. Follow testing best practices for the language/framework
+                    When suggesting a test case:
+                    1. Suggest only ONE test case per response
+                    2. Format your response as:
+                       Test Description: [What aspect this test verifies]
+                       Expected Behavior: [What should happen when the test passes]
+                    3. DO NOT include any code snippets
+                    4. Keep suggestions clear and concise
+                    5. Focus on behavior and outcomes, not implementation
 
-                   ${codeContext ? `Here's the relevant code context (most similar sections first):\n\n${codeContext}` : ''}`
+                    ${codeContext ? `Here's the relevant code context (most similar sections first):\n\n${codeContext}` : ''}`
         }, {
           role: "user",
           content: req.body.prompt
