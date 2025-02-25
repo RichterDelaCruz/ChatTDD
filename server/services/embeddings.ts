@@ -30,7 +30,7 @@ class EmbeddingsService {
       console.log('EmbeddingsService: Initializing Pinecone');
       this.pinecone = new Pinecone({
         apiKey: process.env.PINECONE_API_KEY,
-        hostUrl: 'https://thesis-magmipa.svc.aped-4627-b74a.pinecone.io'
+        environment: 'aped-4627-b74a'  // Extracted from the host URL
       });
 
     } catch (error) {
@@ -44,7 +44,7 @@ class EmbeddingsService {
       if (this.pipeline) return;
 
       console.log('EmbeddingsService: Loading text-embedding-3-large model');
-      this.pipeline = await (Pipeline as any).fromPretrained(
+      this.pipeline = await Pipeline.prototype.fromPretrained(
         'Xenova/text-embedding-3-large',
         { task: 'feature-extraction' }
       );
@@ -77,11 +77,7 @@ class EmbeddingsService {
     await this.initializeModel();
     if (!this.pipeline) throw new Error('Model not initialized');
 
-    const output = await (this.pipeline as any).process(text, {
-      pooling: 'mean',
-      normalize: true
-    });
-
+    const output = await this.pipeline.embeddings(text);
     return Array.from(output.data);
   }
 
@@ -107,7 +103,7 @@ class EmbeddingsService {
       const chunks = this.splitIntoChunks(file.content, file.id);
 
       if (this.pinecone) {
-        const index = this.pinecone.index(this.indexName);
+        const index = this.pinecone.Index(this.indexName);
 
         // Process chunks in batches
         const batchSize = 10;
@@ -156,7 +152,7 @@ class EmbeddingsService {
       const queryEmbedding = await this.generateEmbedding(query);
 
       if (this.pinecone) {
-        const index = this.pinecone.index(this.indexName);
+        const index = this.pinecone.Index(this.indexName);
         const { matches } = await index.query({
           vector: queryEmbedding,
           topK: k,
@@ -195,7 +191,7 @@ class EmbeddingsService {
   async clear() {
     try {
       if (this.pinecone) {
-        const index = this.pinecone.index(this.indexName);
+        const index = this.pinecone.Index(this.indexName);
         await index.deleteAll();
       }
       this.localChunks = [];
