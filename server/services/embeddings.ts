@@ -9,6 +9,10 @@ interface CodeChunk {
   endLine: number;
   filePath: string;
   relatedFiles?: string[];
+  structure?: {
+    functions: { line: number; name: string }[];
+    classes: { line: number; name: string }[];
+  };
 }
 
 interface ProjectFile {
@@ -97,17 +101,49 @@ class EmbeddingsService {
     const chunkSize = 50;
     const chunks: CodeChunk[] = [];
     const relatedFiles = this.findRelatedFiles(code, filePath);
+    const structure = analyzeCode(code, filePath);
 
-    for (let i = 0; i < lines.length; i += chunkSize) {
-      const chunk = lines.slice(i, i + chunkSize);
-      chunks.push({
-        fileId,
-        content: chunk.join('\n'),
-        startLine: i + 1,
-        endLine: Math.min(i + chunkSize, lines.length),
-        filePath,
-        relatedFiles
-      });
+    // Create logical chunks based on code structure
+    const markers = structure.functions.map(f => f.line)
+      .concat(structure.classes.map(c => c.line))
+      .sort((a, b) => a - b);
+
+    if (markers.length > 0) {
+      // Create chunks based on function/class boundaries
+      for (let i = 0; i < markers.length; i++) {
+        const start = markers[i];
+        const end = markers[i + 1] || lines.length;
+        const chunk = lines.slice(start - 1, end);
+        if (chunk.length > 0) {
+          chunks.push({
+            fileId,
+            content: chunk.join('\n'),
+            startLine: start,
+            endLine: end,
+            filePath,
+            relatedFiles,
+            structure: {
+              functions: structure.functions.filter(f => f.line >= start && f.line < end),
+              classes: structure.classes.filter(c => c.line >= start && c.line < end)
+            }
+          });
+        }
+      }
+    }
+
+    // Fill gaps with standard-sized chunks
+    if (chunks.length === 0) {
+      for (let i = 0; i < lines.length; i += chunkSize) {
+        const chunk = lines.slice(i, i + chunkSize);
+        chunks.push({
+          fileId,
+          content: chunk.join('\n'),
+          startLine: i + 1,
+          endLine: Math.min(i + chunkSize, lines.length),
+          filePath,
+          relatedFiles
+        });
+      }
     }
 
     // Update file relationships
@@ -203,7 +239,7 @@ class EmbeddingsService {
     }
   }
 
-  async findSimilarCode(query: string, k: number = 3): Promise<Array<{ fileId: number, content: string, similarity: number }>> {
+  async findSimilarCode(query: string, selectedFiles: number[], k: number = 3): Promise<Array<{ fileId: number; content: string; similarity: number }>> {
     try {
       const queryEmbedding = await this.generateSimpleEmbedding(query);
 
@@ -213,6 +249,9 @@ class EmbeddingsService {
           const { matches } = await index.query({
             vector: queryEmbedding,
             topK: k,
+            filter: {
+              fileId: { $in: selectedFiles }
+            },
             includeMetadata: true
           });
 
@@ -230,7 +269,8 @@ class EmbeddingsService {
       }
 
       // Local similarity search
-      const similarities = this.localChunks.map(chunk => ({
+      const relevantChunks = this.localChunks.filter(chunk => selectedFiles.includes(chunk.fileId));
+      const similarities = relevantChunks.map(chunk => ({
         chunk,
         similarity: chunk.embedding ?
           this.calculateSimilarity(queryEmbedding, chunk.embedding) :
@@ -332,6 +372,12 @@ class EmbeddingsService {
 
     return result;
   }
+}
+
+// Placeholder for code analysis function.  Needs to be implemented separately.
+function analyzeCode(code: string, filePath: string): { functions: { line: number; name: string }[]; classes: { line: number; name: string }[] } {
+  // Replace this with actual code analysis logic
+  return { functions: [], classes: [] };
 }
 
 export const embeddingsService = new EmbeddingsService();

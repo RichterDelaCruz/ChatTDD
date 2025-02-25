@@ -220,41 +220,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let codeContext = "";
       let folderStructure = "";
       let filesAnalyzed: string[] = [];
+      const files = req.body.fileIds?.length > 0 ? await Promise.all(
+        req.body.fileIds.map(id => storage.getCodeFile(id))
+      ) : [];
 
       if (req.body.fileIds?.length > 0) {
         try {
           // Get folder structure first
           folderStructure = await embeddingsService.getFolderStructure(req.body.fileIds);
 
-          // Get content from all active files
-          const files = await Promise.all(
-            req.body.fileIds.map(id => storage.getCodeFile(id))
+          // Get similar code from selected files
+          const similarCode = await embeddingsService.findSimilarCode(
+            req.body.prompt,
+            req.body.fileIds,
+            MAX_SIMILAR_CHUNKS
           );
-
-          filesAnalyzed = files.filter(f => f).map(f => f!.name);
-
-          // Search for similar code in each file
-          const similarCode = [];
-          for (const file of files) {
-            if (!file) continue;
-            const similar = await embeddingsService.findSimilarCode(
-              req.body.prompt,
-              Math.floor(MAX_SIMILAR_CHUNKS / files.length)
-            );
-            similarCode.push(...similar);
-          }
 
           // Format code context
           if (similarCode.length > 0) {
-            codeContext = "Relevant Code Sections:\n\n" + similarCode
-              .map(({ content, similarity, filePath, relatedFiles }) =>
-                `File: ${filePath}\n` +
-                `Similarity: ${(similarity * 100).toFixed(1)}%\n` +
-                `${content}\n` +
-                (relatedFiles?.length ? `Related files: ${relatedFiles.join(', ')}\n` : '')
-              )
+            codeContext = "Selected Files Context:\n\n" + similarCode
+              .map(({ content, similarity, fileId }) => {
+                const file = files.find(f => f.id === fileId);
+                return `File: ${file?.name || 'Unknown'}\n` +
+                       `Similarity: ${(similarity * 100).toFixed(1)}%\n` +
+                       `Content:\n${content}\n`;
+              })
               .join('\n---\n\n');
           }
+
+          filesAnalyzed = files.filter(f => f).map(f => f!.name);
+
         } catch (error) {
           console.error("Error analyzing code:", error);
         }
@@ -278,8 +273,11 @@ Example/Expected Results:
 Explanation:
 [Explain the reasoning behind this test case and why it's important]
 
-${folderStructure ? `\n${folderStructure}\n` : ''}
-${codeContext ? `\n${codeContext}` : ''}`
+Selected Files:
+${filesAnalyzed.join('\n')}
+
+${folderStructure ? `\nProject Structure:\n${folderStructure}\n` : ''}
+${codeContext ? `\nRelevant Code Context:\n${codeContext}` : ''}`
       };
 
       // Include previous conversation messages for context
