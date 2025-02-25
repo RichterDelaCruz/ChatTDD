@@ -126,7 +126,8 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
     },
     multiple: true,
     noClick: false,
-    disabled: isProcessing
+    disabled: isProcessing,
+    useFsAccessApi: false // Disable FileSystem Access API to ensure webkitdirectory works
   });
 
   return (
@@ -141,7 +142,13 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
           ${isProcessing ? "opacity-50 cursor-wait" : "cursor-pointer"}
         `}
       >
-        <input {...getInputProps()} directory="" webkitdirectory="" />
+        <input 
+          {...getInputProps()} 
+          // @ts-ignore - These attributes are non-standard but needed for directory upload
+          directory=""
+          webkitdirectory=""
+          mozdirectory=""
+        />
         <Upload className="h-12 w-12 text-muted-foreground mb-4" />
         <p className="text-center text-muted-foreground">
           {isProcessing
