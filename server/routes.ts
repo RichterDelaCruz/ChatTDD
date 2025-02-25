@@ -6,81 +6,134 @@ import fetch from "node-fetch";
 import { embeddingsService } from "./services/embeddings";
 
 const DEEPSEEK_API_ENDPOINT = "https://api.deepseek.com/v1/chat/completions";
+const MAX_CONTEXT_LENGTH = 2000;
+const MAX_SIMILAR_CHUNKS = 2;
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Code Files
   app.post("/api/files", async (req, res) => {
-    const parsed = insertCodeFileSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid file data" });
+    try {
+      const parsed = insertCodeFileSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid file data" });
+      }
+      const file = await storage.createCodeFile(parsed.data);
+
+      // Index the file for similarity search
+      try {
+        await embeddingsService.addToIndex(file);
+      } catch (error) {
+        console.error("Failed to index file:", error);
+        // Continue anyway since the file is saved
+      }
+
+      res.json(file);
+    } catch (error) {
+      console.error("Error creating file:", error);
+      res.status(500).json({ error: "Failed to create file" });
     }
-    const file = await storage.createCodeFile(parsed.data);
-
-    // Index the file for similarity search
-    await embeddingsService.addToIndex(file);
-
-    res.json(file);
   });
 
   app.get("/api/files", async (_req, res) => {
-    const files = await storage.listCodeFiles();
-    res.json(files);
+    try {
+      const files = await storage.listCodeFiles();
+      res.json(files);
+    } catch (error) {
+      console.error("Error listing files:", error);
+      res.status(500).json({ error: "Failed to list files" });
+    }
   });
 
   app.get("/api/files/:id", async (req, res) => {
-    const file = await storage.getCodeFile(Number(req.params.id));
-    if (!file) {
-      return res.status(404).json({ error: "File not found" });
+    try {
+      const file = await storage.getCodeFile(Number(req.params.id));
+      if (!file) {
+        return res.status(404).json({ error: "File not found" });
+      }
+      res.json(file);
+    } catch (error) {
+      console.error("Error getting file:", error);
+      res.status(500).json({ error: "Failed to get file" });
     }
-    res.json(file);
   });
 
   // Test Cases
   app.post("/api/files/:id/tests", async (req, res) => {
-    const parsed = insertTestCaseSchema.safeParse({
-      ...req.body,
-      fileId: Number(req.params.id)
-    });
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid test case data" });
+    try {
+      const parsed = insertTestCaseSchema.safeParse({
+        ...req.body,
+        fileId: Number(req.params.id)
+      });
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid test case data" });
+      }
+      const testCase = await storage.createTestCase(parsed.data);
+      res.json(testCase);
+    } catch (error) {
+      console.error("Error creating test case:", error);
+      res.status(500).json({ error: "Failed to create test case" });
     }
-    const testCase = await storage.createTestCase(parsed.data);
-    res.json(testCase);
   });
 
   app.get("/api/files/:id/tests", async (req, res) => {
-    const testCases = await storage.getTestCases(Number(req.params.id));
-    res.json(testCases);
+    try {
+      const testCases = await storage.getTestCases(Number(req.params.id));
+      res.json(testCases);
+    } catch (error) {
+      console.error("Error getting test cases:", error);
+      res.status(500).json({ error: "Failed to get test cases" });
+    }
   });
 
   // Chat Messages
   app.post("/api/files/:id/messages", async (req, res) => {
-    const parsed = insertChatMessageSchema.safeParse({
-      ...req.body,
-      fileId: Number(req.params.id)
-    });
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid message data" });
+    try {
+      const parsed = insertChatMessageSchema.safeParse({
+        ...req.body,
+        fileId: Number(req.params.id)
+      });
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid message data" });
+      }
+      const message = await storage.createChatMessage(parsed.data);
+      res.json(message);
+    } catch (error) {
+      console.error("Error creating message:", error);
+      res.status(500).json({ error: "Failed to create message" });
     }
-    const message = await storage.createChatMessage(parsed.data);
-    res.json(message);
   });
 
   app.get("/api/files/:id/messages", async (req, res) => {
-    const messages = await storage.getChatMessages(Number(req.params.id));
-    res.json(messages);
+    try {
+      const messages = await storage.getChatMessages(Number(req.params.id));
+      res.json(messages);
+    } catch (error) {
+      console.error("Error getting messages:", error);
+      res.status(500).json({ error: "Failed to get messages" });
+    }
   });
 
   // DeepSeek API Proxy with RAG
   app.post("/api/deepseek/generate", async (req, res) => {
     try {
-      // Find relevant code snippets
-      const similarCode = await embeddingsService.findSimilarCode(req.body.prompt);
-      console.log("Similar code found:", similarCode.map(c => c.fileId));
+      let similarCode = [];
+      try {
+        // Find relevant code snippets (limited to 2)
+        similarCode = await embeddingsService.findSimilarCode(req.body.prompt, MAX_SIMILAR_CHUNKS);
+        console.log("Similar code found:", similarCode.map(c => c.fileId));
+      } catch (error) {
+        console.error("Error finding similar code:", error);
+        // Continue without similar code if search fails
+      }
 
-      const codeContext = similarCode
+      // Limit context size
+      let codeContext = similarCode
         .map(({ content }) => content)
         .join('\n\n');
+
+      if (codeContext.length > MAX_CONTEXT_LENGTH) {
+        codeContext = codeContext.substring(0, MAX_CONTEXT_LENGTH) + "...";
+      }
 
       const requestBody = {
         model: "deepseek-coder",
@@ -88,23 +141,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           role: "system",
           content: `You are a Test-Driven Development expert. Generate exactly ONE specific test case at a time. 
                    Focus on edge cases, error conditions, and important behavioral aspects.
-                   Consider the following code context when generating test suggestions:
-
-                   ${codeContext}
-
-                   Provide your response in this format:
-                   1. Test Description: [Brief description of what this specific test verifies]
-                   2. Expected Behavior: [What should happen when the test runs]
-                   3. Edge Case Coverage: [What edge case or condition this test handles]`
+                   ${codeContext ? `Consider the following code context:\n\n${codeContext}` : ''}`
         }, {
           role: "user",
           content: req.body.prompt
         }],
         max_tokens: 1000,
-        temperature: 0.7
+        temperature: 0.7,
+        stream: true
       };
 
-      console.log("Sending request to DeepSeek:", JSON.stringify(requestBody, null, 2));
+      if (!process.env.DEEPSEEK_API_KEY) {
+        throw new Error("DEEPSEEK_API_KEY not configured");
+      }
 
       const response = await fetch(DEEPSEEK_API_ENDPOINT, {
         method: "POST",
@@ -115,33 +164,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
         body: JSON.stringify(requestBody)
       });
 
-      const responseText = await response.text();
-      console.log("DeepSeek raw response:", responseText);
-
-      let responseData;
-      try {
-        responseData = JSON.parse(responseText);
-      } catch (e) {
-        console.error("Failed to parse response:", responseText);
-        throw new Error("Invalid response from DeepSeek API");
-      }
-
       if (!response.ok) {
-        throw new Error(responseData.error?.message || response.statusText);
+        const error = await response.text();
+        throw new Error(error || response.statusText);
       }
 
-      // Add debug information about which files were analyzed
-      responseData.debug = {
-        filesAnalyzed: similarCode.map(c => c.fileId),
-        relevantContext: codeContext
-      };
+      // Set up streaming response
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
 
-      res.json(responseData);
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') {
+                res.write('data: [DONE]\n\n');
+                break;
+              }
+              try {
+                const parsed = JSON.parse(data);
+                const content = parsed.choices[0]?.delta?.content || '';
+                if (content) {
+                  res.write(`data: ${JSON.stringify({ content })}\n\n`);
+                }
+              } catch (e) {
+                console.error('Error parsing SSE data:', e);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error streaming response:', error);
+        // Don't throw here, just end the response
+      } finally {
+        res.end();
+      }
     } catch (error: any) {
-      console.error("Error calling DeepSeek API:", error);
-      res.status(500).json({ 
-        error: error.message || "Failed to generate test case recommendations"
-      });
+      console.error("Error in DeepSeek API route:", error);
+      // Ensure we send an error response
+      if (!res.headersSent) {
+        res.status(500).json({ 
+          error: error.message || "Failed to generate test case recommendations"
+        });
+      }
     }
   });
 

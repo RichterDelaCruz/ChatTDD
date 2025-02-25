@@ -14,10 +14,14 @@ class EmbeddingsService {
   private pinecone: Pinecone | null = null;
   private indexName = 'thesis';
   private dimension = 3072;
-  private localChunks: CodeChunk[] = [];
+  private localChunks: Array<CodeChunk & { embedding?: number[] }> = [];
 
   constructor() {
     console.log('EmbeddingsService: Created instance');
+    this.initializePinecone().catch(err => {
+      console.error('EmbeddingsService: Pinecone initialization failed:', err);
+      console.log('EmbeddingsService: Using local storage fallback');
+    });
   }
 
   private async initializePinecone() {
@@ -27,28 +31,18 @@ class EmbeddingsService {
         return;
       }
 
-      console.log('EmbeddingsService: Initializing Pinecone');
+      console.log('EmbeddingsService: Initializing Pinecone client');
       this.pinecone = new Pinecone({
         apiKey: process.env.PINECONE_API_KEY
       });
 
+      // Test connection by listing indexes
+      await this.pinecone.listIndexes();
+      console.log('EmbeddingsService: Successfully connected to Pinecone');
+
     } catch (error) {
       console.error('EmbeddingsService: Pinecone initialization failed:', error);
-      console.log('EmbeddingsService: Falling back to local storage');
-    }
-  }
-
-  private async initializeModel() {
-    if (this.pipeline) return;
-
-    try {
-      console.log('EmbeddingsService: Loading transformer model');
-      // Direct instantiation without prototype
-      this.pipeline = new Pipeline('feature-extraction', 'Xenova/text-embedding-3-large');
-      console.log('EmbeddingsService: Model loaded successfully');
-    } catch (error) {
-      console.error('EmbeddingsService: Model initialization failed:', error);
-      // Don't throw, we'll fall back to basic text processing
+      this.pinecone = null; // Ensure we use local storage
     }
   }
 
@@ -70,39 +64,34 @@ class EmbeddingsService {
     return chunks;
   }
 
-  private async generateEmbedding(text: string): Promise<number[]> {
-    try {
-      await this.initializeModel();
+  private async generateSimpleEmbedding(text: string): Promise<number[]> {
+    // Generate a simple term frequency vector
+    const words = text.toLowerCase().split(/\W+/);
+    const freq = new Map<string, number>();
 
-      if (this.pipeline) {
-        const output = await this.pipeline.encode(text);
-        return Array.from(output);
-      } else {
-        // Fallback: generate simple term frequency vector
-        const words = text.toLowerCase().split(/\W+/);
-        const wordSet = new Set(words);
-        return Array.from(wordSet).map(word => 
-          words.filter(w => w === word).length / words.length
-        );
-      }
-    } catch (error) {
-      console.error('EmbeddingsService: Embedding generation failed:', error);
-      // Return a simple hash-based vector as fallback
-      return Array(this.dimension).fill(0).map((_, i) => 
-        Math.sin(text.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) + i)
-      );
-    }
+    words.forEach(word => {
+      freq.set(word, (freq.get(word) || 0) + 1);
+    });
+
+    // Convert frequencies to vector
+    const values = Array.from(freq.values());
+    const sum = values.reduce((a, b) => a + b, 0);
+    const normalized = values.map(v => v / sum);
+
+    // Pad or truncate to match expected dimension
+    const padding = Array(this.dimension - normalized.length).fill(0);
+    return [...normalized, ...padding].slice(0, this.dimension);
   }
 
-  private calculateSimilarity(embedding1: number[], embedding2: number[]): number {
+  private calculateSimilarity(v1: number[], v2: number[]): number {
     let dotProduct = 0;
     let norm1 = 0;
     let norm2 = 0;
 
-    for (let i = 0; i < embedding1.length; i++) {
-      dotProduct += embedding1[i] * embedding2[i];
-      norm1 += embedding1[i] * embedding1[i];
-      norm2 += embedding2[i] * embedding2[i];
+    for (let i = 0; i < v1.length; i++) {
+      dotProduct += v1[i] * v2[i];
+      norm1 += v1[i] * v1[i];
+      norm2 += v2[i] * v2[i];
     }
 
     return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2) || 1);
@@ -110,23 +99,20 @@ class EmbeddingsService {
 
   async addToIndex(file: CodeFile) {
     try {
-      await this.initializePinecone();
       console.log(`EmbeddingsService: Processing file ${file.id}`);
-
       const chunks = this.splitIntoChunks(file.content, file.id);
 
       if (this.pinecone) {
         const index = this.pinecone.Index(this.indexName);
-
-        // Process chunks in batches
         const batchSize = 10;
+
         for (let i = 0; i < chunks.length; i += batchSize) {
           const batch = chunks.slice(i, i + batchSize);
-          console.log(`EmbeddingsService: Processing batch ${i / batchSize + 1}/${Math.ceil(chunks.length / batchSize)}`);
+          console.log(`Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(chunks.length / batchSize)}`);
 
           const vectors = await Promise.all(
             batch.map(async (chunk, idx) => {
-              const embedding = await this.generateEmbedding(chunk.content);
+              const embedding = await this.generateSimpleEmbedding(chunk.content);
               return {
                 id: `${file.id}-${i + idx}`,
                 values: embedding,
@@ -143,68 +129,71 @@ class EmbeddingsService {
           await index.upsert(vectors);
         }
       } else {
-        // Fallback to local storage
+        // Local storage fallback
+        console.log('EmbeddingsService: Using local storage for file', file.id);
         for (const chunk of chunks) {
-          const embedding = await this.generateEmbedding(chunk.content);
-          this.localChunks.push({
-            ...chunk,
-            embedding
-          } as any);
+          const embedding = await this.generateSimpleEmbedding(chunk.content);
+          this.localChunks.push({ ...chunk, embedding });
         }
       }
 
       console.log(`EmbeddingsService: Successfully processed file ${file.id}`);
     } catch (error) {
-      console.error('EmbeddingsService: Failed to process file:', error);
-      // Store in local chunks as fallback
+      console.error('EmbeddingsService: Error processing file:', error);
+      // Always fall back to local storage on error
       const chunks = this.splitIntoChunks(file.content, file.id);
       for (const chunk of chunks) {
-        const embedding = await this.generateEmbedding(chunk.content);
-        this.localChunks.push({
-          ...chunk,
-          embedding
-        } as any);
+        const embedding = await this.generateSimpleEmbedding(chunk.content);
+        this.localChunks.push({ ...chunk, embedding });
       }
     }
   }
 
-  async findSimilarCode(query: string, k: number = 3): Promise<Array<{ fileId: number, content: string, similarity: number }>> {
+  async findSimilarCode(query: string, k: number = 2): Promise<Array<{ fileId: number, content: string, similarity: number }>> {
     try {
-      const queryEmbedding = await this.generateEmbedding(query);
+      const queryEmbedding = await this.generateSimpleEmbedding(query);
 
       if (this.pinecone) {
-        const index = this.pinecone.Index(this.indexName);
-        const { matches } = await index.query({
-          vector: queryEmbedding,
-          topK: k,
-          includeMetadata: true
-        });
+        try {
+          const index = this.pinecone.Index(this.indexName);
+          const { matches } = await index.query({
+            vector: queryEmbedding,
+            topK: k,
+            includeMetadata: true
+          });
 
-        if (!matches) return [];
+          if (!matches) return [];
 
-        return matches.map(match => ({
-          fileId: match.metadata.fileId,
-          content: match.metadata.content,
-          similarity: match.score || 0
-        }));
-      } else {
-        // Local similarity search
-        const similarities = this.localChunks.map(chunk => ({
-          chunk,
-          similarity: this.calculateSimilarity(queryEmbedding, (chunk as any).embedding)
-        }));
-
-        return similarities
-          .sort((a, b) => b.similarity - a.similarity)
-          .slice(0, k)
-          .map(({ chunk, similarity }) => ({
-            fileId: chunk.fileId,
-            content: chunk.content,
-            similarity
+          return matches.map(match => ({
+            fileId: match.metadata.fileId as number,
+            content: match.metadata.content as string,
+            similarity: match.score || 0
           }));
+        } catch (error) {
+          console.error('EmbeddingsService: Pinecone query failed, falling back to local:', error);
+          // Fall through to local search
+        }
       }
+
+      // Local similarity search
+      const similarities = this.localChunks.map(chunk => ({
+        chunk,
+        similarity: chunk.embedding ?
+          this.calculateSimilarity(queryEmbedding, chunk.embedding) :
+          0
+      }));
+
+      return similarities
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, k)
+        .map(({ chunk, similarity }) => ({
+          fileId: chunk.fileId,
+          content: chunk.content,
+          similarity
+        }));
+
     } catch (error) {
-      console.error('EmbeddingsService: Failed to find similar code:', error);
+      console.error('EmbeddingsService: Error finding similar code:', error);
       return [];
     }
   }
@@ -218,7 +207,7 @@ class EmbeddingsService {
       this.localChunks = [];
       console.log('EmbeddingsService: Cleared all vectors');
     } catch (error) {
-      console.error('EmbeddingsService: Failed to clear vectors:', error);
+      console.error('EmbeddingsService: Error clearing vectors:', error);
       this.localChunks = [];
     }
   }

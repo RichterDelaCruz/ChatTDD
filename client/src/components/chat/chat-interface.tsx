@@ -5,10 +5,8 @@ import { type ChatMessage } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, RotateCw, Code } from "lucide-react";
+import { Send, RotateCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { generateTestCaseRecommendation } from "@/lib/deep-seek";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface ChatInterfaceProps {
   fileId: number;
@@ -18,7 +16,7 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
   const { toast } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
-  const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [streamedResponse, setStreamedResponse] = useState("");
 
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ["/api/files", fileId, "messages"],
@@ -39,24 +37,62 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
 
       try {
         setIsGenerating(true);
-        // Generate test case recommendation
-        const recommendation = await generateTestCaseRecommendation(content);
+        setStreamedResponse("");
 
-        // Store debug info received from the API
-        if (recommendation.debug) {
-          setDebugInfo(recommendation.debug);
+        // Stream response from DeepSeek
+        const response = await fetch("/api/deepseek/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: content })
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to generate response");
         }
 
-        // Send assistant message
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error("No response stream available");
+
+        const decoder = new TextDecoder();
+        let accumulatedResponse = "";
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') break;
+
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.content) {
+                  accumulatedResponse += parsed.content;
+                  setStreamedResponse(accumulatedResponse);
+                }
+              } catch (e) {
+                console.error('Error parsing stream data:', e);
+              }
+            }
+          }
+        }
+
+        // Send assistant message with complete response
         await apiRequest("POST", `/api/files/${fileId}/messages`, {
           role: "assistant",
-          content: recommendation.content || recommendation
+          content: accumulatedResponse
         });
+
       } catch (error: any) {
         console.error("Error in chat:", error);
         throw new Error(error.message || "Failed to get AI response");
       } finally {
         setIsGenerating(false);
+        setStreamedResponse("");
       }
     },
     onSuccess: () => {
@@ -79,12 +115,6 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
     }
   };
 
-  const handleNextSuggestion = () => {
-    if (input.trim()) {
-      sendMessage.mutate("Generate another test case suggestion for: " + input.trim());
-    }
-  };
-
   return (
     <div className="flex flex-col h-[600px]">
       <ScrollArea className="flex-1 p-4">
@@ -97,30 +127,16 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
             }`}>
               {message.content}
             </div>
-            {message.role === "assistant" && debugInfo && i === messages.length - 1 && (
-              <Collapsible className="ml-4 mt-2">
-                <CollapsibleTrigger className="flex items-center text-sm text-muted-foreground hover:text-foreground">
-                  <Code className="h-4 w-4 mr-1" />
-                  View Context
-                </CollapsibleTrigger>
-                <CollapsibleContent className="mt-2 text-sm text-muted-foreground">
-                  <div className="bg-muted/50 p-2 rounded">
-                    <p>Files analyzed: {debugInfo.filesAnalyzed?.join(", ")}</p>
-                    {debugInfo.relevantContext && (
-                      <details className="mt-2">
-                        <summary>Relevant Code Snippets</summary>
-                        <pre className="mt-2 text-xs overflow-x-auto">
-                          {debugInfo.relevantContext}
-                        </pre>
-                      </details>
-                    )}
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            )}
           </div>
         ))}
-        {isGenerating && (
+        {isGenerating && streamedResponse && (
+          <div className="mb-4">
+            <div className="bg-muted text-muted-foreground mr-8 p-3 rounded-lg">
+              {streamedResponse}
+            </div>
+          </div>
+        )}
+        {isGenerating && !streamedResponse && (
           <div className="flex items-center justify-center p-4 text-muted-foreground">
             <RotateCw className="h-4 w-4 animate-spin mr-2" />
             Analyzing codebase & generating suggestion...
@@ -135,27 +151,19 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask for test case recommendations..."
             className="flex-1"
+            disabled={isGenerating}
           />
-          <div className="flex flex-col gap-2">
-            <Button 
-              type="submit"
-              disabled={sendMessage.isPending || isGenerating}
-              className="px-3"
-            >
+          <Button 
+            type="submit"
+            disabled={sendMessage.isPending || isGenerating}
+            className="px-3"
+          >
+            {isGenerating ? (
+              <RotateCw className="h-4 w-4 animate-spin" />
+            ) : (
               <Send className="h-4 w-4" />
-            </Button>
-            {messages.length > 0 && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleNextSuggestion}
-                disabled={sendMessage.isPending || isGenerating}
-                className="px-3"
-              >
-                <RotateCw className="h-4 w-4" />
-              </Button>
             )}
-          </div>
+          </Button>
         </div>
       </form>
     </div>
