@@ -1,41 +1,99 @@
 import type { CodeFile } from '@shared/schema';
 
-class EmbeddingsService {
-  private codeMap: Map<number, { fileId: number, content: string }> = new Map();
+interface CodeChunk {
+  fileId: number;
+  content: string;
+  startLine: number;
+  endLine: number;
+}
 
-  async addToIndex(file: CodeFile) {
-    const indexId = this.codeMap.size;
-    this.codeMap.set(indexId, {
-      fileId: file.id,
-      content: file.content
-    });
+class EmbeddingsService {
+  private codeChunks: CodeChunk[] = [];
+
+  // Split code into smaller chunks for more efficient similarity search
+  private splitIntoChunks(code: string, fileId: number): CodeChunk[] {
+    const lines = code.split('\n');
+    const chunkSize = 50; // Adjust based on your needs
+    const chunks: CodeChunk[] = [];
+
+    for (let i = 0; i < lines.length; i += chunkSize) {
+      const chunk = lines.slice(i, i + chunkSize);
+      chunks.push({
+        fileId,
+        content: chunk.join('\n'),
+        startLine: i + 1,
+        endLine: Math.min(i + chunkSize, lines.length)
+      });
+    }
+
+    return chunks;
   }
 
-  // Simple cosine similarity between two strings
+  async addToIndex(file: CodeFile) {
+    const chunks = this.splitIntoChunks(file.content, file.id);
+    this.codeChunks.push(...chunks);
+  }
+
+  // Improved similarity calculation using TF-IDF inspired approach
   private calculateSimilarity(text1: string, text2: string): number {
-    const words1 = new Set(text1.toLowerCase().split(/\W+/));
-    const words2 = new Set(text2.toLowerCase().split(/\W+/));
+    const tokenize = (text: string) => {
+      return text.toLowerCase()
+        .split(/\W+/)
+        .filter(word => word.length > 2); // Filter out very short words
+    };
 
-    const intersection = new Set([...words1].filter(x => words2.has(x)));
+    const words1 = tokenize(text1);
+    const words2 = tokenize(text2);
 
-    if (words1.size === 0 || words2.size === 0) return 0;
+    // Create word frequency maps
+    const freq1 = new Map<string, number>();
+    const freq2 = new Map<string, number>();
 
-    return intersection.size / Math.sqrt(words1.size * words2.size);
+    words1.forEach(word => freq1.set(word, (freq1.get(word) || 0) + 1));
+    words2.forEach(word => freq2.set(word, (freq2.get(word) || 0) + 1));
+
+    // Calculate dot product
+    let dotProduct = 0;
+    let norm1 = 0;
+    let norm2 = 0;
+
+    // Use all unique words from both texts
+    const allWords = new Set([...freq1.keys(), ...freq2.keys()]);
+
+    allWords.forEach(word => {
+      const f1 = freq1.get(word) || 0;
+      const f2 = freq2.get(word) || 0;
+      dotProduct += f1 * f2;
+      norm1 += f1 * f1;
+      norm2 += f2 * f2;
+    });
+
+    // Return cosine similarity
+    return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2) || 1);
   }
 
   async findSimilarCode(query: string, k: number = 3): Promise<Array<{ fileId: number, content: string, similarity: number }>> {
-    const results = Array.from(this.codeMap.values()).map(file => ({
-      ...file,
-      similarity: this.calculateSimilarity(query, file.content)
+    // Calculate similarities for each chunk
+    const results = this.codeChunks.map(chunk => ({
+      fileId: chunk.fileId,
+      content: chunk.content,
+      similarity: this.calculateSimilarity(query, chunk.content)
     }));
 
+    // Sort by similarity and take top k unique files
+    const seenFileIds = new Set<number>();
     return results
       .sort((a, b) => b.similarity - a.similarity)
+      .filter(result => {
+        if (seenFileIds.has(result.fileId)) return false;
+        seenFileIds.add(result.fileId);
+        return true;
+      })
       .slice(0, k);
   }
 
   clear() {
-    this.codeMap.clear();
+    this.codeChunks = [];
   }
 }
 

@@ -76,9 +76,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Find relevant code snippets
       const similarCode = await embeddingsService.findSimilarCode(req.body.prompt);
+      console.log("Similar code found:", similarCode.map(c => c.fileId));
+
       const codeContext = similarCode
         .map(({ content }) => content)
         .join('\n\n');
+
+      const requestBody = {
+        model: "deepseek-coder",
+        messages: [{
+          role: "system",
+          content: `You are a Test-Driven Development expert. Generate exactly ONE specific test case at a time. 
+                   Focus on edge cases, error conditions, and important behavioral aspects.
+                   Consider the following code context when generating test suggestions:
+
+                   ${codeContext}
+
+                   Provide your response in this format:
+                   1. Test Description: [Brief description of what this specific test verifies]
+                   2. Expected Behavior: [What should happen when the test runs]
+                   3. Edge Case Coverage: [What edge case or condition this test handles]`
+        }, {
+          role: "user",
+          content: req.body.prompt
+        }],
+        max_tokens: 1000,
+        temperature: 0.7
+      };
+
+      console.log("Sending request to DeepSeek:", JSON.stringify(requestBody, null, 2));
 
       const response = await fetch(DEEPSEEK_API_ENDPOINT, {
         method: "POST",
@@ -86,27 +112,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${process.env.DEEPSEEK_API_KEY}`
         },
-        body: JSON.stringify({
-          model: "deepseek-coder",
-          messages: [{
-            role: "system",
-            content: `You are a Test-Driven Development expert. Generate one specific test case at a time. 
-                     Focus on edge cases, error conditions, and important behavioral aspects.
-                     Consider the following code context when generating test suggestions:
-
-                     ${codeContext}`
-          }, {
-            role: "user",
-            content: req.body.prompt
-          }],
-          max_tokens: 1000,
-          temperature: 0.7
-        })
+        body: JSON.stringify(requestBody)
       });
 
       const responseText = await response.text();
-      let responseData;
+      console.log("DeepSeek raw response:", responseText);
 
+      let responseData;
       try {
         responseData = JSON.parse(responseText);
       } catch (e) {
