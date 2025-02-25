@@ -5,9 +5,10 @@ import { type ChatMessage } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, RotateCw } from "lucide-react";
+import { Send, RotateCw, Code } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { generateTestCaseRecommendation } from "@/lib/deep-seek";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface ChatInterfaceProps {
   fileId: number;
@@ -17,6 +18,7 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
   const { toast } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
 
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ["/api/files", fileId, "messages"],
@@ -40,10 +42,15 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
         // Generate test case recommendation
         const recommendation = await generateTestCaseRecommendation(content);
 
+        // Store debug info received from the API
+        if (recommendation.debug) {
+          setDebugInfo(recommendation.debug);
+        }
+
         // Send assistant message
         await apiRequest("POST", `/api/files/${fileId}/messages`, {
           role: "assistant",
-          content: recommendation
+          content: recommendation.content || recommendation
         });
       } catch (error: any) {
         console.error("Error in chat:", error);
@@ -82,21 +89,41 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
     <div className="flex flex-col h-[600px]">
       <ScrollArea className="flex-1 p-4">
         {messages.map((message, i) => (
-          <div
-            key={i}
-            className={`mb-4 p-3 rounded-lg ${
+          <div key={i} className="mb-4">
+            <div className={`p-3 rounded-lg ${
               message.role === "user"
                 ? "bg-primary text-primary-foreground ml-8"
                 : "bg-muted text-muted-foreground mr-8"
-            }`}
-          >
-            {message.content}
+            }`}>
+              {message.content}
+            </div>
+            {message.role === "assistant" && debugInfo && i === messages.length - 1 && (
+              <Collapsible className="ml-4 mt-2">
+                <CollapsibleTrigger className="flex items-center text-sm text-muted-foreground hover:text-foreground">
+                  <Code className="h-4 w-4 mr-1" />
+                  View Context
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 text-sm text-muted-foreground">
+                  <div className="bg-muted/50 p-2 rounded">
+                    <p>Files analyzed: {debugInfo.filesAnalyzed?.join(", ")}</p>
+                    {debugInfo.relevantContext && (
+                      <details className="mt-2">
+                        <summary>Relevant Code Snippets</summary>
+                        <pre className="mt-2 text-xs overflow-x-auto">
+                          {debugInfo.relevantContext}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
           </div>
         ))}
         {isGenerating && (
           <div className="flex items-center justify-center p-4 text-muted-foreground">
             <RotateCw className="h-4 w-4 animate-spin mr-2" />
-            Generating suggestion...
+            Analyzing codebase & generating suggestion...
           </div>
         )}
       </ScrollArea>
