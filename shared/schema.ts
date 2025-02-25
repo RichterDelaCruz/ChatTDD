@@ -25,11 +25,10 @@ export const testCases = pgTable("test_cases", {
 
 export const chatMessages = pgTable("chat_messages", {
   id: serial("id").primaryKey(),
-  fileId: serial("file_id").references(() => codeFiles.id),
+  fileIds: integer("file_ids").array(), // Now stores an array of file IDs
   role: text("role").notNull(),
   content: text("content").notNull(),
   timestamp: timestamp("timestamp").defaultNow(),
-  fileVersion: integer("file_version").notNull(), // Track which version of the file this message refers to
 });
 
 export const insertCodeFileSchema = createInsertSchema(codeFiles).omit({ 
@@ -45,8 +44,7 @@ export const insertTestCaseSchema = createInsertSchema(testCases).omit({
 
 export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({ 
   id: true, 
-  timestamp: true,
-  fileVersion: true 
+  timestamp: true
 });
 
 export type CodeFile = typeof codeFiles.$inferSelect;

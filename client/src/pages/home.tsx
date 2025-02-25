@@ -8,14 +8,19 @@ import { Button } from "@/components/ui/button";
 
 export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false);
-  const [activeFile, setActiveFile] = useState<CodeFile | null>(null);
+  const [activeFiles, setActiveFiles] = useState<CodeFile[]>([]);
 
   const handleFileProcessed = (file: CodeFile) => {
-    setActiveFile(file);
+    setActiveFiles(prev => {
+      // Check if file already exists
+      const exists = prev.some(f => f.id === file.id);
+      if (exists) return prev;
+      return [...prev, file];
+    });
   };
 
-  const handleRemoveFile = () => {
-    setActiveFile(null);
+  const handleRemoveFile = (fileId: number) => {
+    setActiveFiles(prev => prev.filter(f => f.id !== fileId));
   };
 
   return (
@@ -34,30 +39,35 @@ export default function Home() {
               />
             </Card>
 
-            {activeFile && (
-              <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Active Codebase:</p>
-                  <p className="text-sm text-muted-foreground">{activeFile.name}</p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleRemoveFile}
-                  className="hover:bg-destructive hover:text-destructive-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+            {activeFiles.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Active Codebase Files:</p>
+                {activeFiles.map(file => (
+                  <div key={file.id} className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+                    <div className="flex-1">
+                      <p className="text-sm text-muted-foreground">{file.name}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemoveFile(file.id)}
+                      className="hover:bg-destructive hover:text-destructive-foreground"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
 
           <div>
-            {activeFile && !isProcessing && (
-              <Card className="p-6">
-                <ChatInterface fileId={activeFile.id} />
-              </Card>
-            )}
+            <Card className="p-6">
+              <ChatInterface 
+                activeFileIds={activeFiles.map(f => f.id)} 
+                isProcessingFiles={isProcessing}
+              />
+            </Card>
           </div>
         </div>
       </div>

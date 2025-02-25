@@ -1,4 +1,4 @@
-import { 
+import {
   type CodeFile, type InsertCodeFile,
   type TestCase, type InsertTestCase,
   type ChatMessage, type InsertChatMessage
@@ -16,10 +16,10 @@ export interface IStorage {
   getTestCases(fileId: number): Promise<TestCase[]>;
   createTestCase(testCase: InsertTestCase): Promise<TestCase>;
 
-  // Chat Messages
-  getChatMessages(fileId: number): Promise<ChatMessage[]>;
+  // Chat Messages (Global)
+  getChatMessages(): Promise<ChatMessage[]>;
   createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
-  clearChatMessages(fileId: number): Promise<void>;
+  clearChatMessages(): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -91,8 +91,8 @@ export class MemStorage implements IStorage {
 
   async createTestCase(testCase: InsertTestCase): Promise<TestCase> {
     const id = this.currentId.testCases++;
-    const newTestCase: TestCase = { 
-      ...testCase, 
+    const newTestCase: TestCase = {
+      ...testCase,
       id,
       createdAt: new Date()
     };
@@ -100,9 +100,8 @@ export class MemStorage implements IStorage {
     return newTestCase;
   }
 
-  async getChatMessages(fileId: number): Promise<ChatMessage[]> {
+  async getChatMessages(): Promise<ChatMessage[]> {
     return Array.from(this.chatMessages.values())
-      .filter(msg => msg.fileId === fileId)
       .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
   }
 
@@ -117,13 +116,8 @@ export class MemStorage implements IStorage {
     return chatMessage;
   }
 
-  async clearChatMessages(fileId: number): Promise<void> {
-    // Remove all messages for this file
-    for (const [id, message] of this.chatMessages.entries()) {
-      if (message.fileId === fileId) {
-        this.chatMessages.delete(id);
-      }
-    }
+  async clearChatMessages(): Promise<void> {
+    this.chatMessages.clear();
   }
 }
 

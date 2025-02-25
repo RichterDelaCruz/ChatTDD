@@ -9,20 +9,24 @@ import { Send, RotateCw, Plus, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface ChatInterfaceProps {
-  fileId: number;
+  activeFileIds: number[];
+  isProcessingFiles: boolean;
 }
 
-export function ChatInterface({ fileId }: ChatInterfaceProps) {
+export function ChatInterface({ activeFileIds, isProcessingFiles }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
   const { toast } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamedResponse, setStreamedResponse] = useState("");
   const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
 
+  // Use a stable key for chat history that doesn't depend on file IDs
+  const chatHistoryKey = "global-chat-history";
+
   const { data: messages = [], isLoading } = useQuery({
-    queryKey: ["/api/files", fileId, "messages"],
+    queryKey: [chatHistoryKey],
     queryFn: async () => {
-      const res = await fetch(`/api/files/${fileId}/messages`);
+      const res = await fetch(`/api/chat/messages`);
       if (!res.ok) throw new Error("Failed to fetch messages");
       return res.json() as Promise<ChatMessage[]>;
     }
@@ -30,10 +34,10 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
 
   const clearChat = useMutation({
     mutationFn: async () => {
-      await apiRequest("DELETE", `/api/files/${fileId}/messages`);
+      await apiRequest("DELETE", `/api/chat/messages`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/files", fileId, "messages"] });
+      queryClient.invalidateQueries({ queryKey: [chatHistoryKey] });
       toast({
         title: "Chat cleared",
         description: "Starting a new conversation"
@@ -50,11 +54,9 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
 
   const sendMessage = useMutation({
     mutationFn: async (content: string) => {
-      // First, store the user message locally
       setPendingUserMessage(content);
 
-      // Send user message
-      await apiRequest("POST", `/api/files/${fileId}/messages`, {
+      await apiRequest("POST", `/api/chat/messages`, {
         role: "user",
         content
       });
@@ -63,13 +65,12 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
         setIsGenerating(true);
         setStreamedResponse("");
 
-        // Stream response from DeepSeek with fileId for context
         const response = await fetch("/api/deepseek/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ 
             prompt: content,
-            fileId: fileId 
+            fileIds: activeFileIds // Send all active file IDs for context
           })
         });
 
@@ -108,8 +109,7 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
           }
         }
 
-        // Send assistant message with complete response
-        await apiRequest("POST", `/api/files/${fileId}/messages`, {
+        await apiRequest("POST", `/api/chat/messages`, {
           role: "assistant",
           content: accumulatedResponse
         });
@@ -125,7 +125,7 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
     },
     onSuccess: () => {
       setInput("");
-      queryClient.invalidateQueries({ queryKey: ["/api/files", fileId, "messages"] });
+      queryClient.invalidateQueries({ queryKey: [chatHistoryKey] });
     },
     onError: (error) => {
       toast({
@@ -156,7 +156,7 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
     ...messages,
     ...(pendingUserMessage ? [{
       id: -1,
-      fileId,
+      fileIds: activeFileIds,
       role: "user",
       content: pendingUserMessage,
       timestamp: new Date()
@@ -164,12 +164,10 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
   ];
 
   const formatAssistantMessage = (content: string) => {
-    // Replace section headers with styled versions
     return content
       .split('\n')
       .map((line, i, arr) => {
         if (line.endsWith(':')) {
-          // Add spacing before section headers (except the first one)
           const spacing = i > 0 ? 'mt-4' : '';
           return (
             <div key={i} className={`${spacing} font-semibold text-primary`}>
@@ -220,7 +218,9 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
         {isGenerating && !streamedResponse && (
           <div className="flex items-center justify-center p-4 text-muted-foreground">
             <RotateCw className="h-4 w-4 animate-spin mr-2" />
-            Analyzing codebase & generating suggestion...
+            {activeFileIds.length > 0 ? 
+              "Analyzing codebase & generating suggestion..." :
+              "Generating suggestion..."}
           </div>
         )}
       </ScrollArea>
@@ -230,7 +230,9 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask for test case recommendations..."
+            placeholder={activeFileIds.length > 0 ? 
+              "Ask for test case recommendations..." :
+              "Ask any question about testing..."}
             className="flex-1"
             disabled={isGenerating}
           />

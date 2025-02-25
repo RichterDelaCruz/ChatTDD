@@ -91,7 +91,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Chat Messages
+  // Chat Messages (File Specific)
   app.post("/api/files/:id/messages", async (req, res) => {
     try {
       const parsed = insertChatMessageSchema.safeParse({
@@ -119,12 +119,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Add DELETE endpoint for clearing chat messages
   app.delete("/api/files/:id/messages", async (req, res) => {
     try {
       const fileId = Number(req.params.id);
       // Clear messages for this file
       const messages = await storage.clearChatMessages(fileId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error clearing messages:", error);
+      res.status(500).json({ error: "Failed to clear messages" });
+    }
+  });
+
+
+  // Chat Messages (Global)
+  app.post("/api/chat/messages", async (req, res) => {
+    try {
+      const parsed = insertChatMessageSchema.safeParse({
+        ...req.body,
+        fileIds: req.body.fileIds || []
+      });
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid message data" });
+      }
+      const message = await storage.createChatMessage(parsed.data);
+      res.json(message);
+    } catch (error) {
+      console.error("Error creating message:", error);
+      res.status(500).json({ error: "Failed to create message" });
+    }
+  });
+
+  app.get("/api/chat/messages", async (_req, res) => {
+    try {
+      const messages = await storage.getChatMessages();
+      res.json(messages);
+    } catch (error) {
+      console.error("Error getting messages:", error);
+      res.status(500).json({ error: "Failed to get messages" });
+    }
+  });
+
+  app.delete("/api/chat/messages", async (_req, res) => {
+    try {
+      await storage.clearChatMessages();
       res.json({ success: true });
     } catch (error) {
       console.error("Error clearing messages:", error);
@@ -140,20 +178,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get previous messages for context
-      const fileId = req.body.fileId;
-      let previousMessages = [];
-      if (fileId) {
-        previousMessages = await storage.getChatMessages(fileId);
-      }
+      const previousMessages = await storage.getChatMessages();
 
-      // Find relevant code snippets
+      // Find relevant code snippets from all active files
       let similarCode = [];
-      try {
-        similarCode = await embeddingsService.findSimilarCode(req.body.prompt, MAX_SIMILAR_CHUNKS);
-        console.log("Found similar code chunks:", similarCode.length);
-      } catch (error) {
-        console.error("Error finding similar code:", error);
-        // Continue without similar code if search fails
+      if (req.body.fileIds?.length > 0) {
+        try {
+          // Get content from all active files
+          const files = await Promise.all(
+            req.body.fileIds.map(id => storage.getCodeFile(id))
+          );
+
+          // Search for similar code in each file
+          for (const file of files) {
+            if (!file) continue;
+            const similar = await embeddingsService.findSimilarCode(
+              req.body.prompt,
+              Math.floor(MAX_SIMILAR_CHUNKS / files.length) // Distribute chunks among files
+            );
+            similarCode.push(...similar);
+          }
+
+          console.log("Found similar code chunks:", similarCode.length);
+        } catch (error) {
+          console.error("Error finding similar code:", error);
+          // Continue without similar code if search fails
+        }
       }
 
       // Limit context size
