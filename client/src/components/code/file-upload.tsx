@@ -47,7 +47,10 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
         const existingFile = existingFiles.find((f: CodeFile) => f.name === fileInfo.name);
 
         if (existingFile && existingFile.hash === fileInfo.hash) {
-          results.push(existingFile);
+          results.push({
+            ...existingFile,
+            path: fileInfo.path // Ensure we preserve the path
+          });
           continue;
         }
 
@@ -62,7 +65,10 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
         });
 
         const result = await res.json();
-        results.push(result);
+        results.push({
+          ...result,
+          path: fileInfo.path // Ensure we preserve the path
+        });
       }
       return results;
     },
@@ -126,6 +132,8 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
     },
     multiple: true,
     noClick: false,
+    directory: true,
+    webkitdirectory: true,
     disabled: isProcessing
   });
 
@@ -141,7 +149,7 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
           ${isProcessing ? "opacity-50 cursor-wait" : "cursor-pointer"}
         `}
       >
-        <input {...getInputProps()} directory="" webkitdirectory="" />
+        <input {...getInputProps()} />
         <Upload className="h-12 w-12 text-muted-foreground mb-4" />
         <p className="text-center text-muted-foreground">
           {isProcessing
