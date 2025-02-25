@@ -24,72 +24,81 @@ export function FolderTree({ files, onRemoveFile, onRemoveFolder }: FolderTreePr
   const buildFileTree = (files: CodeFile[]): FileNode[] => {
     const root: { [key: string]: FileNode } = {};
 
+    // First pass: create all folder nodes
     files.forEach(file => {
       const path = file.path || file.name;
       const parts = path.split('/');
 
-      // Process each part of the path to build the tree
       let currentPath = '';
-      let current = root;
-
-      // Handle all path parts except the last one (which is the file)
       for (let i = 0; i < parts.length - 1; i++) {
         const part = parts[i];
         currentPath = currentPath ? `${currentPath}/${part}` : part;
 
-        if (!current[currentPath]) {
-          current[currentPath] = {
+        if (!root[currentPath]) {
+          root[currentPath] = {
             name: part,
             path: currentPath,
             type: 'folder',
             children: []
           };
         }
-
-        // Ensure we have a children array
-        if (!current[currentPath].children) {
-          current[currentPath].children = [];
-        }
-
-        // Move to the next level
-        const nextLevel = current[currentPath].children!.reduce((acc, child) => {
-          acc[child.path] = child;
-          return acc;
-        }, {} as { [key: string]: FileNode });
-
-        current = nextLevel;
-      }
-
-      // Add the file to its parent folder
-      const parentPath = parts.slice(0, -1).join('/');
-      const fileName = parts[parts.length - 1];
-      const filePath = path;
-
-      if (parentPath && root[parentPath]) {
-        // Add to parent folder's children
-        root[parentPath].children!.push({
-          name: fileName,
-          path: filePath,
-          type: 'file',
-          fileId: file.id
-        });
-      } else {
-        // Root level file
-        root[filePath] = {
-          name: fileName,
-          path: filePath,
-          type: 'file',
-          fileId: file.id
-        };
       }
     });
 
-    // Convert to array and sort (folders first, then files)
-    return Object.values(root)
-      .sort((a, b) => {
+    // Second pass: add files to their parent folders
+    files.forEach(file => {
+      const path = file.path || file.name;
+      const parts = path.split('/');
+      const fileName = parts[parts.length - 1];
+      const parentPath = parts.slice(0, -1).join('/');
+
+      const fileNode: FileNode = {
+        name: fileName,
+        path: path,
+        type: 'file',
+        fileId: file.id
+      };
+
+      if (parentPath) {
+        if (!root[parentPath]) {
+          // Create parent folder if it doesn't exist
+          root[parentPath] = {
+            name: parts[parts.length - 2],
+            path: parentPath,
+            type: 'folder',
+            children: []
+          };
+        }
+        root[parentPath].children = root[parentPath].children || [];
+        root[parentPath].children.push(fileNode);
+      } else {
+        // Root level file
+        root[path] = fileNode;
+      }
+    });
+
+    // Build the folder hierarchy
+    Object.keys(root).forEach(path => {
+      if (path.includes('/')) {
+        const parentPath = path.split('/').slice(0, -1).join('/');
+        if (root[parentPath]) {
+          root[parentPath].children = root[parentPath].children || [];
+          root[parentPath].children.push(root[path]);
+          delete root[path];
+        }
+      }
+    });
+
+    // Sort folders first, then files
+    const sortNodes = (nodes: FileNode[]): FileNode[] => {
+      return nodes.sort((a, b) => {
         if (a.type === b.type) return a.name.localeCompare(b.name);
         return a.type === 'folder' ? -1 : 1;
       });
+    };
+
+    // Return root level nodes sorted
+    return sortNodes(Object.values(root));
   };
 
   const toggleFolder = (path: string) => {
@@ -104,19 +113,18 @@ export function FolderTree({ files, onRemoveFile, onRemoveFolder }: FolderTreePr
     });
   };
 
-  const renderNode = (node: FileNode, parentPath: string = '') => {
-    const fullPath = parentPath ? `${parentPath}/${node.name}` : node.name;
-    const isExpanded = expandedFolders.has(fullPath);
+  const renderNode = (node: FileNode) => {
+    const isExpanded = expandedFolders.has(node.path);
 
     if (node.type === 'folder') {
       return (
-        <div key={fullPath} className="space-y-1">
+        <div key={node.path} className="space-y-1">
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="sm"
               className="p-0 h-auto hover:bg-transparent"
-              onClick={() => toggleFolder(fullPath)}
+              onClick={() => toggleFolder(node.path)}
             >
               {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </Button>
@@ -126,19 +134,14 @@ export function FolderTree({ files, onRemoveFile, onRemoveFolder }: FolderTreePr
               variant="ghost"
               size="sm"
               className="ml-auto p-1 h-auto hover:bg-destructive hover:text-destructive-foreground"
-              onClick={() => onRemoveFolder(fullPath)}
+              onClick={() => onRemoveFolder(node.path)}
             >
               <X className="h-3 w-3" />
             </Button>
           </div>
           {isExpanded && node.children && (
             <div className="pl-6 space-y-1">
-              {node.children
-                .sort((a, b) => {
-                  if (a.type === b.type) return a.name.localeCompare(b.name);
-                  return a.type === 'folder' ? -1 : 1;
-                })
-                .map(child => renderNode(child, fullPath))}
+              {node.children.map(child => renderNode(child))}
             </div>
           )}
         </div>
@@ -146,7 +149,7 @@ export function FolderTree({ files, onRemoveFile, onRemoveFolder }: FolderTreePr
     }
 
     return (
-      <div key={fullPath} className="flex items-center gap-2 pl-6">
+      <div key={node.path} className="flex items-center gap-2 pl-6">
         <FileText className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm text-muted-foreground">{node.name}</span>
         {node.fileId && (
@@ -169,12 +172,7 @@ export function FolderTree({ files, onRemoveFile, onRemoveFolder }: FolderTreePr
     <div className="space-y-2">
       <h3 className="text-sm font-medium">Project Structure</h3>
       <div className="space-y-1">
-        {tree
-          .sort((a, b) => {
-            if (a.type === b.type) return a.name.localeCompare(b.name);
-            return a.type === 'folder' ? -1 : 1;
-          })
-          .map(node => renderNode(node))}
+        {tree.map(node => renderNode(node))}
       </div>
     </div>
   );
