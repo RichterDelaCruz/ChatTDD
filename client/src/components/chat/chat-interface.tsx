@@ -5,7 +5,7 @@ import { type ChatMessage } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, RotateCw } from "lucide-react";
+import { Send, RotateCw, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface ChatInterfaceProps {
@@ -121,6 +121,10 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
     }
   };
 
+  const handleSuggestAnother = () => {
+    sendMessage.mutate("Suggest another test case");
+  };
+
   const allMessages = [
     ...messages,
     ...(pendingUserMessage ? [{
@@ -181,7 +185,7 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
         )}
       </ScrollArea>
 
-      <form onSubmit={handleSubmit} className="p-4 border-t">
+      <form onSubmit={handleSubmit} className="p-4 border-t space-y-4">
         <div className="flex gap-2">
           <Textarea
             value={input}
@@ -202,6 +206,17 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
             )}
           </Button>
         </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={handleSuggestAnother}
+          disabled={isGenerating || sendMessage.isPending}
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Suggest another test case
+        </Button>
       </form>
     </div>
   );
