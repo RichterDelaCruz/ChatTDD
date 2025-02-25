@@ -11,9 +11,8 @@ export class FileWatcherService {
 
   constructor(server: Server) {
     this.wss = new WebSocketServer({ 
-      server,
-      path: '/ws/file-updates',
-      perMessageDeflate: false
+      server, 
+      path: '/ws/file-updates' 
     });
 
     this.setupWebSocket();
@@ -35,26 +34,18 @@ export class FileWatcherService {
       ws.on('close', () => {
         console.log('File watcher client disconnected');
       });
-
-      ws.on('error', (error) => {
-        console.error('WebSocket error:', error);
-      });
-    });
-
-    this.wss.on('error', (error) => {
-      console.error('WebSocket server error:', error);
     });
   }
 
   private async handleFileUpdate(update: FileUpdate) {
     const currentHash = this.fileVersions.get(update.name);
-
+    
     // Only process if file has changed
     if (currentHash !== update.hash) {
       console.log(`File ${update.name} has changed, updating...`);
-
+      
       const existingFile = await storage.findCodeFileByName(update.name);
-
+      
       if (existingFile) {
         // Update existing file
         const updatedFile = await storage.updateCodeFile({
@@ -65,7 +56,7 @@ export class FileWatcherService {
 
         // Update embeddings
         await embeddingsService.addToIndex(updatedFile);
-
+        
         // Broadcast change to all connected clients
         this.broadcastUpdate({
           type: 'FILE_UPDATED',
@@ -81,12 +72,11 @@ export class FileWatcherService {
           name: update.name,
           content: update.content,
           hash: update.hash,
-          path: update.path,
-          structure: { functions: [], classes: [] }
+          structure: { functions: [], classes: [] } // Basic structure, can be enhanced
         });
 
         await embeddingsService.addToIndex(newFile);
-
+        
         this.broadcastUpdate({
           type: 'FILE_ADDED',
           payload: {

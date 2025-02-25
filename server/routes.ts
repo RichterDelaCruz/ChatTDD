@@ -252,18 +252,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: "system",
         content: `You are a Test-Driven Development expert. Help users write high-quality test cases.
 
-IMPORTANT: For each response, analyze the provided project structure and relationships between files to provide focused test recommendations.
+IMPORTANT: For each response, first analyze the project structure and relationships between files, then provide focused test recommendations.
 
-Project Structure:
-${folderStructure}
-
-${codeContext ? `\nRelevant Code Sections:\n\n${codeContext}` : ''}
-
-Guidelines:
-1. Always consider file relationships and imports when suggesting tests
-2. Look at the overall project structure to understand the codebase organization
-3. Prioritize testing key functionality and edge cases
-4. Consider both unit tests and integration tests where appropriate`
+${folderStructure ? `\n${folderStructure}\n` : ''}
+${codeContext ? `\n${codeContext}` : ''}`
       };
 
       // Include previous conversation messages for context

@@ -5,9 +5,8 @@ import { z } from "zod";
 export const codeFiles = pgTable("code_files", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  path: text("path").notNull(), // Add path field
   content: text("content").notNull(),
-  hash: text("hash").notNull(),
+  hash: text("hash").notNull(), // For tracking file changes
   version: integer("version").notNull().default(1),
   lastUpdated: timestamp("last_updated").defaultNow(),
   structure: jsonb("structure").notNull().$type<{
@@ -26,7 +25,7 @@ export const testCases = pgTable("test_cases", {
 
 export const chatMessages = pgTable("chat_messages", {
   id: serial("id").primaryKey(),
-  fileIds: integer("file_ids").array(),
+  fileIds: integer("file_ids").array(), // Now stores an array of file IDs
   role: text("role").notNull(),
   content: text("content").notNull(),
   timestamp: timestamp("timestamp").defaultNow(),
@@ -58,7 +57,6 @@ export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
 // Utility type for file updates
 export type FileUpdate = {
   name: string;
-  path: string;
   content: string;
   hash: string;
 };
