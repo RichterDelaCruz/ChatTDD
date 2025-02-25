@@ -1,10 +1,9 @@
 import { FileUpload } from "@/components/code/file-upload";
 import { ChatInterface } from "@/components/chat/chat-interface";
+import { FolderTree } from "@/components/code/folder-tree";
 import { useState } from "react";
 import { type CodeFile } from "@shared/schema";
 import { Card } from "@/components/ui/card";
-import { X } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -21,6 +20,15 @@ export default function Home() {
 
   const handleRemoveFile = (fileId: number) => {
     setActiveFiles(prev => prev.filter(f => f.id !== fileId));
+  };
+
+  const handleRemoveFolder = (folderPath: string) => {
+    setActiveFiles(prev => 
+      prev.filter(file => {
+        const filePath = file.path || file.name;
+        return !filePath.startsWith(folderPath + '/') && filePath !== folderPath;
+      })
+    );
   };
 
   return (
@@ -40,24 +48,13 @@ export default function Home() {
             </Card>
 
             {activeFiles.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Active Codebase Files:</p>
-                {activeFiles.map(file => (
-                  <div key={file.id} className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                    <div className="flex-1">
-                      <p className="text-sm text-muted-foreground">{file.name}</p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleRemoveFile(file.id)}
-                      className="hover:bg-destructive hover:text-destructive-foreground"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
+              <Card className="p-6">
+                <FolderTree 
+                  files={activeFiles}
+                  onRemoveFile={handleRemoveFile}
+                  onRemoveFolder={handleRemoveFolder}
+                />
+              </Card>
             )}
           </div>
 
