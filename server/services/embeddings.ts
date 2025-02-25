@@ -7,8 +7,13 @@ interface CodeChunk {
   content: string;
   startLine: number;
   endLine: number;
-  filePath: string; // Added for folder structure context
-  relatedFiles?: string[]; // Added for file relationships
+  filePath: string;
+  relatedFiles?: string[];
+}
+
+interface ProjectFile {
+  name: string;
+  path: string;
 }
 
 class EmbeddingsService {
@@ -17,7 +22,8 @@ class EmbeddingsService {
   private indexName = 'thesis';
   private dimension = 3072;
   private localChunks: Array<CodeChunk & { embedding?: number[] }> = [];
-  private fileRelationships: Map<string, Set<string>> = new Map(); // Track file relationships
+  private fileRelationships: Map<string, Set<string>> = new Map();
+  private projectStructure: Map<string, Set<string>> = new Map(); // Folder -> files mapping
 
   constructor() {
     console.log('EmbeddingsService: Created instance');
@@ -260,49 +266,68 @@ class EmbeddingsService {
     }
   }
 
-  async getFolderStructure(fileIds: number[]): Promise<string> {
-    const structure = new Map<string, Set<string>>();
-    let result = "Project Structure:\n";
+  async initializeProjectStructure(files: ProjectFile[]) {
+    // Clear existing project structure
+    this.projectStructure.clear();
+    this.fileRelationships.clear();
 
-    // Build folder structure from file paths
-    for (const [filePath, related] of this.fileRelationships.entries()) {
-      const parts = filePath.split('/');
+    // Build folder structure
+    for (const file of files) {
+      const parts = file.path.split('/');
       const filename = parts.pop()!;
-      const folders = parts;
+      let currentPath = '';
 
-      // Build nested folder structure
-      let currentPath = "";
-      for (const folder of folders) {
-        currentPath = currentPath ? `${currentPath}/${folder}` : folder;
-        if (!structure.has(currentPath)) {
-          structure.set(currentPath, new Set());
+      // Build folder hierarchy
+      for (const part of parts) {
+        if (currentPath) {
+          currentPath += '/' + part;
+        } else {
+          currentPath = part;
+        }
+
+        if (!this.projectStructure.has(currentPath)) {
+          this.projectStructure.set(currentPath, new Set());
         }
       }
 
-      // Add file to its folder
-      const folderPath = folders.join('/');
-      if (folderPath) {
-        structure.get(folderPath)?.add(filename);
+      // Add file to its immediate parent folder
+      const parentFolder = parts.join('/');
+      if (parentFolder) {
+        this.projectStructure.get(parentFolder)?.add(filename);
       }
+    }
 
-      // Track related files
+    console.log('Project structure initialized:',
+      Array.from(this.projectStructure.entries())
+        .map(([folder, files]) => `${folder}: ${Array.from(files).join(', ')}`)
+        .join('\n')
+    );
+  }
+
+
+  async getFolderStructure(fileIds: number[]): Promise<string> {
+    let result = "Project Structure:\n";
+
+    // Add overall folder structure
+    for (const [folder, files] of this.projectStructure.entries()) {
+      const level = folder.split('/').length;
+      const indent = "  ".repeat(level - 1);
+      result += `${indent}/${folder}/\n`;
+      files.forEach(file => {
+        result += `${indent}  - ${file}\n`;
+      });
+    }
+
+    // Add file relationships
+    result += "\nFile Relationships:\n";
+    for (const [filePath, related] of this.fileRelationships.entries()) {
       if (related.size > 0) {
-        result += `\nFile Relationships:\n${filename} imports/requires:\n`;
+        const filename = filePath.split('/').pop()!;
+        result += `${filename} imports/requires:\n`;
         related.forEach(relPath => {
           result += `  - ${relPath}\n`;
         });
       }
-    }
-
-    // Build tree structure
-    let indent = "";
-    for (const [folder, files] of structure.entries()) {
-      const level = folder.split('/').length;
-      indent = "  ".repeat(level - 1);
-      result += `${indent}/${folder}\n`;
-      files.forEach(file => {
-        result += `${indent}  - ${file}\n`;
-      });
     }
 
     return result;

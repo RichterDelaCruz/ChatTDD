@@ -20,32 +20,54 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
   const [processedFiles, setProcessedFiles] = useState(0);
 
   const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const content = await file.text();
-      const hash = await generateFileHash(content);
+    mutationFn: async (files: File[]) => {
+      // First, analyze the entire project structure
+      const projectFiles = await Promise.all(
+        files.map(async (file) => ({
+          name: file.name,
+          path: file.webkitRelativePath || file.name,
+          content: await file.text(),
+          hash: await generateFileHash(await file.text())
+        }))
+      );
 
-      // First check if file exists and has changed
-      const existingFiles = await fetch('/api/files').then(res => res.json());
-      const existingFile = existingFiles.find((f: CodeFile) => f.name === file.name);
-
-      if (existingFile && existingFile.hash === hash) {
-        // File exists and hasn't changed, return existing file
-        return existingFile;
-      }
-
-      const structure = analyzeCode(content, file.name);
-
-      const res = await apiRequest("POST", "/api/files", {
-        name: file.name,
-        content,
-        hash,
-        structure,
-        path: file.webkitRelativePath || file.name // Include file path information
+      // Send the entire project structure first
+      await apiRequest("POST", "/api/project/structure", {
+        files: projectFiles.map(f => ({
+          name: f.name,
+          path: f.path
+        }))
       });
-      return res.json();
+
+      // Then process each file
+      const results = [];
+      for (const fileInfo of projectFiles) {
+        // Check if file exists and has changed
+        const existingFiles = await fetch('/api/files').then(res => res.json());
+        const existingFile = existingFiles.find((f: CodeFile) => f.name === fileInfo.name);
+
+        if (existingFile && existingFile.hash === fileInfo.hash) {
+          results.push(existingFile);
+          continue;
+        }
+
+        const structure = analyzeCode(fileInfo.content, fileInfo.name);
+
+        const res = await apiRequest("POST", "/api/files", {
+          name: fileInfo.name,
+          content: fileInfo.content,
+          hash: fileInfo.hash,
+          structure,
+          path: fileInfo.path
+        });
+
+        const result = await res.json();
+        results.push(result);
+      }
+      return results;
     },
-    onSuccess: (data: CodeFile) => {
-      onFileSelected(data);
+    onSuccess: (files) => {
+      files.forEach(file => onFileSelected(file));
       setProcessedFiles(prev => {
         const newCount = prev + 1;
         setProgress((newCount / totalFiles) * 100);
@@ -54,7 +76,7 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
     },
     onError: (error) => {
       toast({
-        title: "Error processing file",
+        title: "Error processing files",
         description: error.message,
         variant: "destructive"
       });
@@ -83,10 +105,7 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
     setProgress(0);
 
     try {
-      // Process all files sequentially
-      for (const file of codeFiles) {
-        await uploadMutation.mutateAsync(file);
-      }
+      await uploadMutation.mutateAsync(codeFiles);
 
       toast({
         title: "Processing complete",
@@ -137,7 +156,7 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
         <div className="space-y-2">
           <Progress value={progress} />
           <p className="text-sm text-muted-foreground text-center">
-            Generating code embeddings...
+            Analyzing project structure and generating code embeddings...
           </p>
         </div>
       )}

@@ -15,6 +15,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ status: "ok" });
   });
 
+  // Add this endpoint near the top of registerRoutes function
+  app.post("/api/project/structure", async (req, res) => {
+    try {
+      const { files } = req.body;
+
+      if (!Array.isArray(files)) {
+        return res.status(400).json({ error: "Invalid project structure data" });
+      }
+
+      // Initialize folder structure in embeddings service
+      try {
+        await embeddingsService.initializeProjectStructure(files);
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Error initializing project structure:", error);
+        res.status(500).json({ error: "Failed to analyze project structure" });
+      }
+    } catch (error) {
+      console.error("Error processing project structure:", error);
+      res.status(500).json({ error: "Failed to process project structure" });
+    }
+  });
+
   // Code Files
   app.post("/api/files", async (req, res) => {
     try {
