@@ -132,24 +132,44 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
     }] : [])
   ];
 
+  const formatAssistantMessage = (content: string) => {
+    // Replace section headers with styled versions
+    return content
+      .split('\n')
+      .map((line, i, arr) => {
+        if (line.endsWith(':')) {
+          // Add spacing before section headers (except the first one)
+          const spacing = i > 0 ? 'mt-4' : '';
+          return (
+            <div key={i} className={`${spacing} font-semibold text-primary`}>
+              {line}
+            </div>
+          );
+        }
+        return <div key={i} className="ml-4">{line}</div>;
+      });
+  };
+
   return (
     <div className="flex flex-col h-[600px]">
       <ScrollArea className="flex-1 p-4">
         {allMessages.map((message, i) => (
           <div key={i} className="mb-4">
-            <div className={`p-3 rounded-lg ${
+            <div className={`p-4 rounded-lg ${
               message.role === "user"
                 ? "bg-primary text-primary-foreground ml-8"
                 : "bg-muted text-muted-foreground mr-8"
             }`}>
-              {message.content}
+              {message.role === "assistant"
+                ? formatAssistantMessage(message.content)
+                : message.content}
             </div>
           </div>
         ))}
         {isGenerating && streamedResponse && (
           <div className="mb-4">
-            <div className="bg-muted text-muted-foreground mr-8 p-3 rounded-lg">
-              {streamedResponse}
+            <div className="bg-muted text-muted-foreground mr-8 p-4 rounded-lg">
+              {formatAssistantMessage(streamedResponse)}
             </div>
           </div>
         )}
@@ -170,7 +190,7 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
             className="flex-1"
             disabled={isGenerating}
           />
-          <Button 
+          <Button
             type="submit"
             disabled={sendMessage.isPending || isGenerating}
             className="px-3"

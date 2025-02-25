@@ -157,14 +157,20 @@ IMPORTANT: Generate EXACTLY ONE test case per response. No more, no less.
 
 Format your response strictly as:
 
-Test Description: [What aspect this test verifies]
-Expected Behavior: [What should happen when the test passes]
+Test Description:
+[Brief description of what this test verifies]
+
+Expected Behavior:
+[Clear description of what should happen when the test passes]
+
+Explanation:
+[Additional context about why this test is important and what edge cases it covers]
 
 Rules:
 1. NEVER include code snippets or implementation details
 2. NEVER suggest multiple test cases
-3. Keep the suggestion focused and concise
-4. Focus on behavior, not implementation
+3. Keep each section focused and concise
+4. Use line breaks between sections for clarity
 
 ${codeContext ? `Here's the relevant code context (most similar sections first):\n\n${codeContext}` : ''}`
         }, {
