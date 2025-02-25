@@ -5,7 +5,7 @@ import { type ChatMessage } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, RotateCw, Plus } from "lucide-react";
+import { Send, RotateCw, Plus, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface ChatInterfaceProps {
@@ -25,6 +25,26 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
       const res = await fetch(`/api/files/${fileId}/messages`);
       if (!res.ok) throw new Error("Failed to fetch messages");
       return res.json() as Promise<ChatMessage[]>;
+    }
+  });
+
+  const clearChat = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/files/${fileId}/messages`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/files", fileId, "messages"] });
+      toast({
+        title: "Chat cleared",
+        description: "Starting a new conversation"
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error clearing chat",
+        description: error.message,
+        variant: "destructive"
+      });
     }
   });
 
@@ -125,6 +145,10 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
     sendMessage.mutate("Suggest another test case");
   };
 
+  const handleNewChat = () => {
+    clearChat.mutate();
+  };
+
   const allMessages = [
     ...messages,
     ...(pendingUserMessage ? [{
@@ -156,6 +180,19 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
 
   return (
     <div className="flex flex-col h-[600px]">
+      <div className="flex justify-between items-center p-4 border-b">
+        <h2 className="text-lg font-semibold">Test Case Suggestions</h2>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleNewChat}
+          disabled={clearChat.isPending || isGenerating}
+        >
+          <RefreshCw className="h-4 w-4 mr-2" />
+          New Chat
+        </Button>
+      </div>
+
       <ScrollArea className="flex-1 p-4">
         {allMessages.map((message, i) => (
           <div key={i} className="mb-4">

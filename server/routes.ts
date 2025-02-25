@@ -119,6 +119,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Add DELETE endpoint for clearing chat messages
+  app.delete("/api/files/:id/messages", async (req, res) => {
+    try {
+      const fileId = Number(req.params.id);
+      // Clear messages for this file
+      const messages = await storage.clearChatMessages(fileId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error clearing messages:", error);
+      res.status(500).json({ error: "Failed to clear messages" });
+    }
+  });
+
   // DeepSeek API Proxy with RAG
   app.post("/api/deepseek/generate", async (req, res) => {
     try {

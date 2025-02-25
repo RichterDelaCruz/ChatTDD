@@ -9,14 +9,15 @@ export interface IStorage {
   getCodeFile(id: number): Promise<CodeFile | undefined>;
   createCodeFile(file: InsertCodeFile): Promise<CodeFile>;
   listCodeFiles(): Promise<CodeFile[]>;
-  
+
   // Test Cases
   getTestCases(fileId: number): Promise<TestCase[]>;
   createTestCase(testCase: InsertTestCase): Promise<TestCase>;
-  
+
   // Chat Messages
   getChatMessages(fileId: number): Promise<ChatMessage[]>;
   createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
+  clearChatMessages(fileId: number): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
@@ -78,6 +79,15 @@ export class MemStorage implements IStorage {
     };
     this.chatMessages.set(id, chatMessage);
     return chatMessage;
+  }
+
+  async clearChatMessages(fileId: number): Promise<void> {
+    // Remove all messages for this file
+    for (const [id, message] of this.chatMessages.entries()) {
+      if (message.fileId === fileId) {
+        this.chatMessages.delete(id);
+      }
+    }
   }
 }
 
