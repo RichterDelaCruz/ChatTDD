@@ -46,15 +46,9 @@ class EmbeddingsService {
     try {
       console.log('EmbeddingsService: Creating Pinecone client');
       this.pinecone = new Pinecone({
-        apiKey: process.env.PINECONE_API_KEY!
+        apiKey: process.env.PINECONE_API_KEY!,
+        environment: process.env.PINECONE_ENVIRONMENT!
       });
-
-      // Parse environment string
-      const envParts = process.env.PINECONE_ENVIRONMENT!.split('-');
-      if (envParts.length !== 2) {
-        throw new Error(`Invalid PINECONE_ENVIRONMENT format. Expected format: cloud-region, got: ${process.env.PINECONE_ENVIRONMENT}`);
-      }
-      const [cloud, region] = envParts;
 
       // Check if index exists
       console.log('EmbeddingsService: Checking for existing index');
@@ -66,12 +60,7 @@ class EmbeddingsService {
         await this.pinecone.createIndex({
           name: this.indexName,
           dimension: this.dimension,
-          spec: {
-            serverless: {
-              cloud,
-              region
-            }
-          }
+          metric: 'cosine'
         });
         console.log('EmbeddingsService: Index created successfully');
       } else {
