@@ -24,8 +24,17 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
       // First, analyze the entire project structure
       const projectFiles = await Promise.all(
         files.map(async (file) => {
-          const path = file.webkitRelativePath || file.name;
-          console.log('Processing file:', { name: file.name, path }); // Debug log
+          // Ensure we get the relative path, fallback to filename if not available
+          const relativePath = (file as any).webkitRelativePath || file.name;
+          const path = relativePath.split('/').slice(1).join('/'); // Remove the root folder name
+
+          console.log('Processing file:', { 
+            name: file.name, 
+            relativePath,
+            path,
+            hasWebkitPath: !!(file as any).webkitRelativePath 
+          });
+
           return {
             name: file.name,
             path: path,
@@ -88,7 +97,11 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
   });
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    console.log('Dropped files:', acceptedFiles.map(f => ({ name: f.name, path: f.webkitRelativePath }))); // Debug log
+    console.log('Dropped files:', acceptedFiles.map(f => ({ 
+      name: f.name, 
+      path: (f as any).webkitRelativePath,
+      type: f.type
+    })));
 
     const codeFiles = acceptedFiles.filter(file => {
       const hasCodeExtension = /\.(js|ts|jsx|tsx|py|java|cpp|cs)$/i.test(file.name);
