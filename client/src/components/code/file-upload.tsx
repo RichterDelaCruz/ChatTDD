@@ -39,7 +39,8 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
         name: file.name,
         content,
         hash,
-        structure
+        structure,
+        path: file.webkitRelativePath || file.name // Include file path information
       });
       return res.json();
     },

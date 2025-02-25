@@ -7,6 +7,8 @@ interface CodeChunk {
   content: string;
   startLine: number;
   endLine: number;
+  filePath: string; // Added for folder structure context
+  relatedFiles?: string[]; // Added for file relationships
 }
 
 class EmbeddingsService {
@@ -15,6 +17,7 @@ class EmbeddingsService {
   private indexName = 'thesis';
   private dimension = 3072;
   private localChunks: Array<CodeChunk & { embedding?: number[] }> = [];
+  private fileRelationships: Map<string, Set<string>> = new Map(); // Track file relationships
 
   constructor() {
     console.log('EmbeddingsService: Created instance');
@@ -36,20 +39,58 @@ class EmbeddingsService {
         apiKey: process.env.PINECONE_API_KEY
       });
 
-      // Test connection by listing indexes
       await this.pinecone.listIndexes();
       console.log('EmbeddingsService: Successfully connected to Pinecone');
 
     } catch (error) {
       console.error('EmbeddingsService: Pinecone initialization failed:', error);
-      this.pinecone = null; // Ensure we use local storage
+      this.pinecone = null;
     }
   }
 
-  private splitIntoChunks(code: string, fileId: number): CodeChunk[] {
+  private findRelatedFiles(content: string, filePath: string): string[] {
+    const relatedFiles = new Set<string>();
+
+    // Look for import statements
+    const importMatches = content.matchAll(/(?:import|from)\s+['"]([^'"]+)['"]/g);
+    for (const match of importMatches) {
+      relatedFiles.add(this.resolveImportPath(match[1], filePath));
+    }
+
+    // Look for require statements
+    const requireMatches = content.matchAll(/require\(['"]([^'"]+)['"]\)/g);
+    for (const match of requireMatches) {
+      relatedFiles.add(this.resolveImportPath(match[1], filePath));
+    }
+
+    return Array.from(relatedFiles);
+  }
+
+  private resolveImportPath(importPath: string, currentFilePath: string): string {
+    // Basic path resolution logic
+    if (importPath.startsWith('.')) {
+      const parts = currentFilePath.split('/');
+      parts.pop(); // Remove filename
+      const importParts = importPath.split('/');
+
+      for (const part of importParts) {
+        if (part === '..') {
+          parts.pop();
+        } else if (part !== '.') {
+          parts.push(part);
+        }
+      }
+
+      return parts.join('/');
+    }
+    return importPath;
+  }
+
+  private splitIntoChunks(code: string, fileId: number, filePath: string): CodeChunk[] {
     const lines = code.split('\n');
     const chunkSize = 50;
     const chunks: CodeChunk[] = [];
+    const relatedFiles = this.findRelatedFiles(code, filePath);
 
     for (let i = 0; i < lines.length; i += chunkSize) {
       const chunk = lines.slice(i, i + chunkSize);
@@ -57,8 +98,15 @@ class EmbeddingsService {
         fileId,
         content: chunk.join('\n'),
         startLine: i + 1,
-        endLine: Math.min(i + chunkSize, lines.length)
+        endLine: Math.min(i + chunkSize, lines.length),
+        filePath,
+        relatedFiles
       });
+    }
+
+    // Update file relationships
+    if (relatedFiles.length > 0) {
+      this.fileRelationships.set(filePath, new Set(relatedFiles));
     }
 
     return chunks;
@@ -97,10 +145,10 @@ class EmbeddingsService {
     return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2) || 1);
   }
 
-  async addToIndex(file: CodeFile) {
+  async addToIndex(file: CodeFile, filePath: string) {
     try {
-      console.log(`EmbeddingsService: Processing file ${file.id}`);
-      const chunks = this.splitIntoChunks(file.content, file.id);
+      console.log(`EmbeddingsService: Processing file ${file.id} at ${filePath}`);
+      const chunks = this.splitIntoChunks(file.content, file.id, filePath);
 
       if (this.pinecone) {
         const index = this.pinecone.Index(this.indexName);
@@ -120,7 +168,9 @@ class EmbeddingsService {
                   fileId: chunk.fileId,
                   content: chunk.content,
                   startLine: chunk.startLine,
-                  endLine: chunk.endLine
+                  endLine: chunk.endLine,
+                  filePath: chunk.filePath,
+                  relatedFiles: chunk.relatedFiles
                 }
               };
             })
@@ -129,7 +179,6 @@ class EmbeddingsService {
           await index.upsert(vectors);
         }
       } else {
-        // Local storage fallback
         console.log('EmbeddingsService: Using local storage for file', file.id);
         for (const chunk of chunks) {
           const embedding = await this.generateSimpleEmbedding(chunk.content);
@@ -140,8 +189,7 @@ class EmbeddingsService {
       console.log(`EmbeddingsService: Successfully processed file ${file.id}`);
     } catch (error) {
       console.error('EmbeddingsService: Error processing file:', error);
-      // Always fall back to local storage on error
-      const chunks = this.splitIntoChunks(file.content, file.id);
+      const chunks = this.splitIntoChunks(file.content, file.id, filePath);
       for (const chunk of chunks) {
         const embedding = await this.generateSimpleEmbedding(chunk.content);
         this.localChunks.push({ ...chunk, embedding });
@@ -210,6 +258,36 @@ class EmbeddingsService {
       console.error('EmbeddingsService: Error clearing vectors:', error);
       this.localChunks = [];
     }
+  }
+
+  async getFolderStructure(fileIds: number[]): Promise<string> {
+    const structure = new Map<string, Set<string>>();
+
+    // Build folder structure from file paths
+    for (const [filePath, related] of this.fileRelationships.entries()) {
+      const folder = filePath.split('/').slice(0, -1).join('/');
+      if (!structure.has(folder)) {
+        structure.set(folder, new Set());
+      }
+      structure.get(folder)!.add(filePath.split('/').pop()!);
+
+      // Add related files to their folders
+      for (const relatedPath of related) {
+        const relatedFolder = relatedPath.split('/').slice(0, -1).join('/');
+        if (!structure.has(relatedFolder)) {
+          structure.set(relatedFolder, new Set());
+        }
+        structure.get(relatedFolder)!.add(relatedPath.split('/').pop()!);
+      }
+    }
+
+    // Convert to string representation
+    return Array.from(structure.entries())
+      .map(([folder, files]) => {
+        const fileList = Array.from(files).join(', ');
+        return `${folder}/: ${fileList}`;
+      })
+      .join('\n');
   }
 }
 

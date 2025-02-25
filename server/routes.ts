@@ -182,12 +182,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Find relevant code snippets from all active files
       let similarCode = [];
+      let folderStructure = "";
+
       if (req.body.fileIds?.length > 0) {
         try {
           // Get content from all active files
           const files = await Promise.all(
             req.body.fileIds.map(id => storage.getCodeFile(id))
           );
+
+          // Get folder structure context
+          folderStructure = await embeddingsService.getFolderStructure(req.body.fileIds);
 
           // Search for similar code in each file
           for (const file of files) {
@@ -208,8 +213,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Limit context size
       let codeContext = similarCode
-        .map(({ content, similarity }) =>
-          `[Similarity: ${(similarity * 100).toFixed(1)}%]\n${content}`
+        .map(({ content, similarity, filePath, relatedFiles }) =>
+          `[File: ${filePath}, Similarity: ${(similarity * 100).toFixed(1)}%]\n${content}${
+            relatedFiles?.length ? `\nRelated files: ${relatedFiles.join(', ')}` : ''
+          }`
         )
         .join('\n\n');
 
@@ -240,6 +247,7 @@ Rules:
 3. Keep each section focused and concise
 4. Use line breaks between sections for clarity
 
+${folderStructure ? `Project Structure:\n${folderStructure}\n\n` : ''}
 ${codeContext ? `Here's the relevant code context (most similar sections first):\n\n${codeContext}` : ''}`
       };
 
@@ -291,7 +299,7 @@ ${codeContext ? `Here's the relevant code context (most similar sections first):
 
       console.log("Starting response stream");
 
-      // Handle the stream using .on('data') instead of reader
+      // Handle the stream
       response.body.on('data', chunk => {
         const lines = chunk.toString().split('\n');
 
