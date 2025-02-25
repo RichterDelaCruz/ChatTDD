@@ -23,12 +23,21 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
     mutationFn: async (files: File[]) => {
       // First, analyze the entire project structure
       const projectFiles = await Promise.all(
-        files.map(async (file) => ({
-          name: file.name,
-          path: file.webkitRelativePath || file.name,
-          content: await file.text(),
-          hash: await generateFileHash(await file.text())
-        }))
+        files.map(async (file) => {
+          // Log the file path to debug
+          console.log('Processing file:', {
+            name: file.name,
+            path: file.webkitRelativePath,
+            type: file.type
+          });
+
+          return {
+            name: file.name,
+            path: file.webkitRelativePath || file.name,
+            content: await file.text(),
+            hash: await generateFileHash(await file.text())
+          };
+        })
       );
 
       // Send the entire project structure first
