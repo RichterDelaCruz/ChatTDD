@@ -17,6 +17,7 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
   const { toast } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamedResponse, setStreamedResponse] = useState("");
+  const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
 
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ["/api/files", fileId, "messages"],
@@ -29,7 +30,10 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
 
   const sendMessage = useMutation({
     mutationFn: async (content: string) => {
-      // First, send user message
+      // First, store the user message locally
+      setPendingUserMessage(content);
+
+      // Send user message
       await apiRequest("POST", `/api/files/${fileId}/messages`, {
         role: "user",
         content
@@ -93,6 +97,7 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
       } finally {
         setIsGenerating(false);
         setStreamedResponse("");
+        setPendingUserMessage(null);
       }
     },
     onSuccess: () => {
@@ -105,6 +110,7 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
         description: error.message,
         variant: "destructive"
       });
+      setPendingUserMessage(null);
     }
   });
 
@@ -115,10 +121,21 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
     }
   };
 
+  const allMessages = [
+    ...messages,
+    ...(pendingUserMessage ? [{
+      id: -1,
+      fileId,
+      role: "user",
+      content: pendingUserMessage,
+      timestamp: new Date()
+    }] : [])
+  ];
+
   return (
     <div className="flex flex-col h-[600px]">
       <ScrollArea className="flex-1 p-4">
-        {messages.map((message, i) => (
+        {allMessages.map((message, i) => (
           <div key={i} className="mb-4">
             <div className={`p-3 rounded-lg ${
               message.role === "user"

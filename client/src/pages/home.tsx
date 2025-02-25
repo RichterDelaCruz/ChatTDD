@@ -1,10 +1,8 @@
 import { FileUpload } from "@/components/code/file-upload";
 import { ChatInterface } from "@/components/chat/chat-interface";
-import { TestCases } from "@/components/test/test-cases";
 import { useState } from "react";
 import { type CodeFile } from "@shared/schema";
 import { Card } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -33,22 +31,9 @@ export default function Home() {
 
           <div>
             {activeFileId && !isProcessing && (
-              <Tabs defaultValue="chat" className="w-full">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="chat">Chat</TabsTrigger>
-                  <TabsTrigger value="tests">Test Cases</TabsTrigger>
-                </TabsList>
-                <TabsContent value="chat">
-                  <Card className="p-6">
-                    <ChatInterface fileId={activeFileId} />
-                  </Card>
-                </TabsContent>
-                <TabsContent value="tests">
-                  <Card className="p-6">
-                    <TestCases fileId={activeFileId} />
-                  </Card>
-                </TabsContent>
-              </Tabs>
+              <Card className="p-6">
+                <ChatInterface fileId={activeFileId} />
+              </Card>
             )}
           </div>
         </div>
