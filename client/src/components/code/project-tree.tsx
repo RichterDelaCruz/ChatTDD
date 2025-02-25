@@ -109,18 +109,18 @@ export function ProjectTree({ files, selectedFiles, onFileSelect }: ProjectTreeP
       <div
         key={node.path}
         className={cn(
-          "flex items-center gap-2 py-1 px-2 hover:bg-accent rounded group",
+          "flex items-center gap-2 py-1 px-2 hover:bg-accent rounded group transition-colors",
           indent,
           selectedFiles.has(node.id!) && "bg-accent"
         )}
       >
+        <FileCode className="h-4 w-4 text-green-500" />
+        <span className="flex-1">{node.name}</span>
         <Checkbox 
           checked={selectedFiles.has(node.id!)}
           onCheckedChange={(checked) => node.id && onFileSelect(node.id, checked as boolean)}
-          className="data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
+          className="data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground opacity-70 group-hover:opacity-100"
         />
-        <FileCode className="h-4 w-4 text-green-500" />
-        <span className="flex-1">{node.name}</span>
       </div>
     );
   };

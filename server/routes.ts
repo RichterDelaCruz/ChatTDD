@@ -264,7 +264,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: "system",
         content: `You are a Test-Driven Development expert. Help users write high-quality test cases.
 
-IMPORTANT: For each response, first analyze the project structure and relationships between files, then provide focused test recommendations.
+IMPORTANT INSTRUCTIONS:
+1. Provide ONLY ONE test case at a time
+2. NEVER include any code snippets in your responses
+3. Structure your responses strictly in this format:
+
+Test Description:
+[Describe what aspect of the code this test case will verify]
+
+Example/Expected Results:
+[Describe the inputs and expected outputs or behavior in plain English]
+
+Explanation:
+[Explain the reasoning behind this test case and why it's important]
 
 ${folderStructure ? `\n${folderStructure}\n` : ''}
 ${codeContext ? `\n${codeContext}` : ''}`
