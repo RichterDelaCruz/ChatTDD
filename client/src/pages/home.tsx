@@ -45,13 +45,18 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background p-4 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-8">
-        <h1 className="text-4xl font-bold text-foreground">
-          TDD Code Assistant
-        </h1>
+        <div className="space-y-2">
+          <h1 className="text-4xl font-bold text-foreground">
+            ChatTDD
+          </h1>
+          <p className="text-muted-foreground">
+            Test-Driven Development Assistant powered by AI
+          </p>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="space-y-4">
-            <Card className="p-6">
+            <Card className="p-6 bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/50">
               <FileUpload 
                 onFileSelected={handleFileProcessed}
                 onProcessingStateChange={setIsProcessing}
@@ -60,7 +65,7 @@ export default function Home() {
             </Card>
 
             {activeFiles.length > 0 && (
-              <Card className="p-6">
+              <Card className="p-6 bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/50">
                 <div className="flex justify-between items-center mb-4">
                   <h2 className="text-lg font-semibold">Project Structure</h2>
                   <Button 
@@ -83,7 +88,7 @@ export default function Home() {
           </div>
 
           <div>
-            <Card className="p-6">
+            <Card className="p-6 bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/50">
               <ChatInterface 
                 activeFileIds={Array.from(selectedFiles)} 
                 isProcessingFiles={isProcessing}
