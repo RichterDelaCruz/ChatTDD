@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
 
 interface FileUploadProps {
-  onFileSelected: (file: CodeFile) => void;
+  onFileSelected: (file: CodeFile & { path: string }) => void;
   onProcessingStateChange: (isProcessing: boolean) => void;
 }
 
@@ -47,7 +47,7 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
         const existingFile = existingFiles.find((f: CodeFile) => f.name === fileInfo.name);
 
         if (existingFile && existingFile.hash === fileInfo.hash) {
-          results.push(existingFile);
+          results.push({ ...existingFile, path: fileInfo.path });
           continue;
         }
 
@@ -62,7 +62,7 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
         });
 
         const result = await res.json();
-        results.push(result);
+        results.push({ ...result, path: fileInfo.path });
       }
       return results;
     },

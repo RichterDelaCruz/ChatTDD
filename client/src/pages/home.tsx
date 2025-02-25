@@ -6,11 +6,15 @@ import { Card } from "@/components/ui/card";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+interface FileWithPath extends CodeFile {
+  path: string;
+}
+
 export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false);
-  const [activeFiles, setActiveFiles] = useState<CodeFile[]>([]);
+  const [activeFiles, setActiveFiles] = useState<FileWithPath[]>([]);
 
-  const handleFileProcessed = (file: CodeFile) => {
+  const handleFileProcessed = (file: FileWithPath) => {
     setActiveFiles(prev => {
       // Check if file already exists
       const exists = prev.some(f => f.id === file.id);
@@ -45,7 +49,8 @@ export default function Home() {
                 {activeFiles.map(file => (
                   <div key={file.id} className="flex items-center gap-2 p-3 bg-muted rounded-lg">
                     <div className="flex-1">
-                      <p className="text-sm text-muted-foreground">{file.name}</p>
+                      <p className="text-sm font-semibold">{file.name}</p>
+                      <p className="text-xs text-muted-foreground">{file.path}</p>
                     </div>
                     <Button
                       variant="ghost"
