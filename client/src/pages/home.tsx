@@ -4,6 +4,8 @@ import { ChatInterface } from "@/components/chat/chat-interface";
 import { useState } from "react";
 import { type CodeFile } from "@shared/schema";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Trash2 } from "lucide-react";
 
 interface FileWithPath extends CodeFile {
   path: string;
@@ -30,6 +32,10 @@ export default function Home() {
     setActiveFiles(prev => prev.filter(f => !f.path.startsWith(folderPath)));
   };
 
+  const handleClearFiles = () => {
+    setActiveFiles([]);
+  };
+
   return (
     <div className="min-h-screen bg-background p-4 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -48,7 +54,18 @@ export default function Home() {
 
             {activeFiles.length > 0 && (
               <Card className="p-6">
-                <h2 className="text-lg font-semibold mb-4">Project Structure</h2>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-lg font-semibold">Project Structure</h2>
+                  <Button 
+                    variant="destructive" 
+                    size="sm"
+                    onClick={handleClearFiles}
+                    className="flex items-center gap-2"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Clear All Files
+                  </Button>
+                </div>
                 <ProjectTree 
                   files={activeFiles}
                   onRemoveFile={handleRemoveFile}

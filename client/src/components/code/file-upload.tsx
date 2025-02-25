@@ -46,7 +46,18 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
         })
       );
 
-      // Send the entire project structure first
+      // Determine if this is a folder upload
+      const isFolder = projectFiles.some(f => f.path.includes('/'));
+
+      // If it's a folder upload, get all existing files first to clear them
+      if (isFolder) {
+        const existingFiles = await fetch('/api/files').then(res => res.json());
+        for (const file of existingFiles) {
+          await apiRequest("DELETE", `/api/files/${file.id}`);
+        }
+      }
+
+      // Send the project structure
       await apiRequest("POST", "/api/project/structure", {
         files: projectFiles.map(f => ({
           name: f.name,
@@ -54,20 +65,9 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
         }))
       });
 
-      // Get existing files to compare
-      const existingFiles = await fetch('/api/files').then(res => res.json());
-
-      // Then process each file
+      // Process each file
       const results = [];
       for (const fileInfo of projectFiles) {
-        // Check if file exists and has changed
-        const existingFile = existingFiles.find((f: CodeFile) => f.name === fileInfo.name);
-
-        if (existingFile && existingFile.hash === fileInfo.hash) {
-          results.push({ ...existingFile, path: fileInfo.path });
-          continue;
-        }
-
         const structure = analyzeCode(fileInfo.content, fileInfo.name);
 
         const res = await apiRequest("POST", "/api/files", {
@@ -80,17 +80,6 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
 
         const result = await res.json();
         results.push({ ...result, path: fileInfo.path });
-      }
-
-      // Find files that were removed
-      const currentPaths = new Set(projectFiles.map(f => f.path));
-      const removedFiles = existingFiles.filter((f: CodeFile) => 
-        !currentPaths.has(f.path)
-      );
-
-      // Remove files that no longer exist in the new structure
-      for (const file of removedFiles) {
-        await apiRequest("DELETE", `/api/files/${file.id}`);
       }
 
       return results;
