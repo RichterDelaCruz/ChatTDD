@@ -1,3 +1,5 @@
+import { Pinecone } from '@pinecone-database/pinecone';
+import { Pipeline } from '@xenova/transformers';
 import type { CodeFile } from '@shared/schema';
 
 interface CodeChunk {
@@ -7,13 +9,99 @@ interface CodeChunk {
   endLine: number;
 }
 
-class EmbeddingsService {
-  private codeChunks: CodeChunk[] = [];
+interface ChunkMetadata {
+  fileId: number;
+  content: string;
+  startLine: number;
+  endLine: number;
+}
 
-  // Split code into smaller chunks for more efficient similarity search
+class EmbeddingsService {
+  private pipeline: Pipeline | null = null;
+  private pinecone: Pinecone | null = null;
+  private indexName = 'code-context';
+  private dimension = 384; // CodeBERT embedding dimension
+  private initialized = false;
+
+  constructor() {
+    // Defer initialization until needed
+    console.log('EmbeddingsService: Created instance');
+  }
+
+  private async ensureInitialized() {
+    if (this.initialized) return;
+
+    try {
+      console.log('EmbeddingsService: Starting initialization');
+      await this.initializePinecone();
+      this.initialized = true;
+      console.log('EmbeddingsService: Initialization complete');
+    } catch (error) {
+      console.error('EmbeddingsService: Initialization failed:', error);
+      throw error;
+    }
+  }
+
+  private async initializePinecone() {
+    try {
+      console.log('EmbeddingsService: Creating Pinecone client');
+      this.pinecone = new Pinecone({
+        apiKey: process.env.PINECONE_API_KEY!
+      });
+
+      // Parse environment string
+      const envParts = process.env.PINECONE_ENVIRONMENT!.split('-');
+      if (envParts.length !== 2) {
+        throw new Error(`Invalid PINECONE_ENVIRONMENT format. Expected format: cloud-region, got: ${process.env.PINECONE_ENVIRONMENT}`);
+      }
+      const [cloud, region] = envParts;
+
+      // Check if index exists
+      console.log('EmbeddingsService: Checking for existing index');
+      const indexList = await this.pinecone!.listIndexes();
+      const exists = indexList.indexes?.some(index => index.name === this.indexName);
+
+      if (!exists) {
+        console.log('EmbeddingsService: Creating new index');
+        await this.pinecone.createIndex({
+          name: this.indexName,
+          dimension: this.dimension,
+          spec: {
+            serverless: {
+              cloud,
+              region
+            }
+          }
+        });
+        console.log('EmbeddingsService: Index created successfully');
+      } else {
+        console.log('EmbeddingsService: Using existing index');
+      }
+    } catch (error) {
+      console.error('EmbeddingsService: Pinecone initialization failed:', error);
+      throw error;
+    }
+  }
+
+  private async initializeModel() {
+    if (this.pipeline) return;
+
+    try {
+      console.log('EmbeddingsService: Loading CodeBERT model');
+      this.pipeline = await (Pipeline as any).fromPretrained(
+        'Xenova/codebert-base',
+        { task: 'feature-extraction' }
+      );
+      console.log('EmbeddingsService: Model loaded successfully');
+    } catch (error) {
+      console.error('EmbeddingsService: Model initialization failed:', error);
+      throw error;
+    }
+  }
+
   private splitIntoChunks(code: string, fileId: number): CodeChunk[] {
     const lines = code.split('\n');
-    const chunkSize = 50; // Adjust based on your needs
+    const chunkSize = 50;
     const chunks: CodeChunk[] = [];
 
     for (let i = 0; i < lines.length; i += chunkSize) {
@@ -29,71 +117,101 @@ class EmbeddingsService {
     return chunks;
   }
 
-  async addToIndex(file: CodeFile) {
-    const chunks = this.splitIntoChunks(file.content, file.id);
-    this.codeChunks.push(...chunks);
+  private async generateEmbedding(text: string): Promise<number[]> {
+    try {
+      await this.initializeModel();
+      if (!this.pipeline) throw new Error('Model not initialized');
+
+      const output = await (this.pipeline as any).process(text, {
+        pooling: 'mean',
+        normalize: true
+      });
+
+      return Array.from(output.data);
+    } catch (error) {
+      console.error('EmbeddingsService: Embedding generation failed:', error);
+      throw error;
+    }
   }
 
-  // Improved similarity calculation using TF-IDF inspired approach
-  private calculateSimilarity(text1: string, text2: string): number {
-    const tokenize = (text: string) => {
-      return text.toLowerCase()
-        .split(/\W+/)
-        .filter(word => word.length > 2); // Filter out very short words
-    };
+  async addToIndex(file: CodeFile) {
+    try {
+      await this.ensureInitialized();
 
-    const words1 = tokenize(text1);
-    const words2 = tokenize(text2);
+      console.log(`EmbeddingsService: Processing file ${file.id}`);
+      const chunks = this.splitIntoChunks(file.content, file.id);
+      const index = this.pinecone!.index(this.indexName);
 
-    // Create word frequency maps
-    const freq1 = new Map<string, number>();
-    const freq2 = new Map<string, number>();
+      // Process chunks in batches
+      const batchSize = 10;
+      for (let i = 0; i < chunks.length; i += batchSize) {
+        const batch = chunks.slice(i, i + batchSize);
+        console.log(`EmbeddingsService: Processing batch ${i / batchSize + 1}/${Math.ceil(chunks.length / batchSize)}`);
 
-    words1.forEach(word => freq1.set(word, (freq1.get(word) || 0) + 1));
-    words2.forEach(word => freq2.set(word, (freq2.get(word) || 0) + 1));
+        const vectors = await Promise.all(
+          batch.map(async (chunk, idx) => {
+            const embedding = await this.generateEmbedding(chunk.content);
+            return {
+              id: `${file.id}-${i + idx}`,
+              values: embedding,
+              metadata: {
+                fileId: chunk.fileId,
+                content: chunk.content,
+                startLine: chunk.startLine,
+                endLine: chunk.endLine
+              }
+            };
+          })
+        );
 
-    // Calculate dot product
-    let dotProduct = 0;
-    let norm1 = 0;
-    let norm2 = 0;
+        await index.upsert(vectors);
+      }
 
-    // Use all unique words from both texts
-    const allWords = Array.from(new Set([...freq1.keys(), ...freq2.keys()]));
-
-    allWords.forEach(word => {
-      const f1 = freq1.get(word) || 0;
-      const f2 = freq2.get(word) || 0;
-      dotProduct += f1 * f2;
-      norm1 += f1 * f1;
-      norm2 += f2 * f2;
-    });
-
-    // Return cosine similarity
-    return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2) || 1);
+      console.log(`EmbeddingsService: Successfully indexed ${chunks.length} chunks from file ${file.id}`);
+    } catch (error) {
+      console.error('EmbeddingsService: Failed to add file to index:', error);
+      throw error;
+    }
   }
 
   async findSimilarCode(query: string, k: number = 3): Promise<Array<{ fileId: number, content: string, similarity: number }>> {
-    // Calculate similarities for each chunk
-    const results = this.codeChunks.map(chunk => ({
-      fileId: chunk.fileId,
-      content: chunk.content,
-      similarity: this.calculateSimilarity(query, chunk.content)
-    }));
+    try {
+      await this.ensureInitialized();
 
-    // Sort by similarity and take top k unique files
-    const seenFileIds = new Set<number>();
-    return results
-      .sort((a, b) => b.similarity - a.similarity)
-      .filter(result => {
-        if (seenFileIds.has(result.fileId)) return false;
-        seenFileIds.add(result.fileId);
-        return true;
-      })
-      .slice(0, k);
+      console.log('EmbeddingsService: Generating query embedding');
+      const queryEmbedding = await this.generateEmbedding(query);
+      const index = this.pinecone!.index(this.indexName);
+
+      console.log('EmbeddingsService: Querying Pinecone');
+      const { matches } = await index.query({
+        vector: queryEmbedding,
+        topK: k,
+        includeMetadata: true
+      });
+
+      if (!matches) return [];
+
+      return matches.map(match => ({
+        fileId: (match.metadata as ChunkMetadata).fileId,
+        content: (match.metadata as ChunkMetadata).content,
+        similarity: match.score || 0
+      }));
+    } catch (error) {
+      console.error('EmbeddingsService: Failed to find similar code:', error);
+      throw error;
+    }
   }
 
-  clear() {
-    this.codeChunks = [];
+  async clear() {
+    try {
+      await this.ensureInitialized();
+      const index = this.pinecone!.index(this.indexName);
+      await index.deleteAll();
+      console.log('EmbeddingsService: Cleared all vectors from index');
+    } catch (error) {
+      console.error('EmbeddingsService: Failed to clear index:', error);
+      throw error;
+    }
   }
 }
 

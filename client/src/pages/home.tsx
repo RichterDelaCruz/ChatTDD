@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function Home() {
+  const [isProcessing, setIsProcessing] = useState(false);
   const [activeFileId, setActiveFileId] = useState<number | null>(null);
 
   const handleFileProcessed = (file: CodeFile) => {
@@ -23,12 +24,15 @@ export default function Home() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div>
             <Card className="p-6">
-              <FileUpload onFileSelected={handleFileProcessed} />
+              <FileUpload 
+                onFileSelected={handleFileProcessed}
+                onProcessingStateChange={setIsProcessing}
+              />
             </Card>
           </div>
 
           <div>
-            {activeFileId && (
+            {activeFileId && !isProcessing && (
               <Tabs defaultValue="chat" className="w-full">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="chat">Chat</TabsTrigger>

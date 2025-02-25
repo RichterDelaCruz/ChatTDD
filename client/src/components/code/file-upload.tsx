@@ -5,14 +5,19 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { type CodeFile } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { Progress } from "@/components/ui/progress";
 
 interface FileUploadProps {
   onFileSelected: (file: CodeFile) => void;
+  onProcessingStateChange: (isProcessing: boolean) => void;
 }
 
-export function FileUpload({ onFileSelected }: FileUploadProps) {
+export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUploadProps) {
   const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [totalFiles, setTotalFiles] = useState(0);
+  const [processedFiles, setProcessedFiles] = useState(0);
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -28,9 +33,10 @@ export function FileUpload({ onFileSelected }: FileUploadProps) {
     },
     onSuccess: (data: CodeFile) => {
       onFileSelected(data);
-      toast({
-        title: "File processed successfully",
-        description: `Processed ${data.name}`
+      setProcessedFiles(prev => {
+        const newCount = prev + 1;
+        setProgress((newCount / totalFiles) * 100);
+        return newCount;
       });
     },
     onError: (error) => {
@@ -43,37 +49,43 @@ export function FileUpload({ onFileSelected }: FileUploadProps) {
   });
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    setIsProcessing(true);
-    try {
-      // Filter code files
-      const codeFiles = acceptedFiles.filter(file => {
-        const hasCodeExtension = /\.(js|ts|jsx|tsx|py|java|cpp|cs)$/i.test(file.name);
-        return hasCodeExtension;
-      });
+    const codeFiles = acceptedFiles.filter(file => {
+      const hasCodeExtension = /\.(js|ts|jsx|tsx|py|java|cpp|cs)$/i.test(file.name);
+      return hasCodeExtension;
+    });
 
+    if (codeFiles.length === 0) {
+      toast({
+        title: "No code files found",
+        description: "Upload a folder containing code files (.js, .ts, .py, etc.)",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsProcessing(true);
+    onProcessingStateChange(true);
+    setTotalFiles(codeFiles.length);
+    setProcessedFiles(0);
+    setProgress(0);
+
+    try {
       // Process all files sequentially
       for (const file of codeFiles) {
         await uploadMutation.mutateAsync(file);
       }
 
-      if (codeFiles.length > 0) {
-        toast({
-          title: "Folder processing complete",
-          description: `Processed ${codeFiles.length} code files`
-        });
-      } else {
-        toast({
-          title: "No code files found",
-          description: "Upload a folder containing code files (.js, .ts, .py, etc.)",
-          variant: "destructive"
-        });
-      }
+      toast({
+        title: "Processing complete",
+        description: `Successfully processed ${codeFiles.length} files`
+      });
     } catch (error) {
       console.error("Error processing files:", error);
     } finally {
       setIsProcessing(false);
+      onProcessingStateChange(false);
     }
-  }, [uploadMutation, toast]);
+  }, [uploadMutation, toast, onProcessingStateChange]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -85,32 +97,42 @@ export function FileUpload({ onFileSelected }: FileUploadProps) {
   });
 
   return (
-    <div
-      {...getRootProps()}
-      className={`
-        border-2 border-dashed rounded-lg p-8
-        flex flex-col items-center justify-center
-        transition-colors
-        ${isDragActive ? "border-primary bg-primary/5" : "border-muted"}
-        ${isProcessing ? "opacity-50 cursor-wait" : "cursor-pointer"}
-      `}
-    >
-      <input {...getInputProps()} directory="" webkitdirectory="" />
-      <Upload className="h-12 w-12 text-muted-foreground mb-4" />
-      <p className="text-center text-muted-foreground">
-        {isProcessing
-          ? "Processing files..."
-          : isDragActive
-          ? "Drop the folder here"
-          : "Drag & drop a folder containing code files, or click to select"}
-      </p>
+    <div className="space-y-4">
+      <div
+        {...getRootProps()}
+        className={`
+          border-2 border-dashed rounded-lg p-8
+          flex flex-col items-center justify-center
+          transition-colors
+          ${isDragActive ? "border-primary bg-primary/5" : "border-muted"}
+          ${isProcessing ? "opacity-50 cursor-wait" : "cursor-pointer"}
+        `}
+      >
+        <input {...getInputProps()} directory="" webkitdirectory="" />
+        <Upload className="h-12 w-12 text-muted-foreground mb-4" />
+        <p className="text-center text-muted-foreground">
+          {isProcessing
+            ? `Processing files (${processedFiles}/${totalFiles})...`
+            : isDragActive
+            ? "Drop the folder here"
+            : "Drag & drop a project folder containing code files, or click to select"}
+        </p>
+      </div>
+
+      {isProcessing && (
+        <div className="space-y-2">
+          <Progress value={progress} />
+          <p className="text-sm text-muted-foreground text-center">
+            Generating code embeddings...
+          </p>
+        </div>
+      )}
     </div>
   );
 }
 
 function analyzeCode(content: string): { functions: any[]; classes: any[] } {
   // Simple regex-based code analysis
-  // In a real app, you'd want to use a proper parser
   const functions = Array.from(content.matchAll(/function\s+(\w+)/g))
     .map((match, i) => ({
       name: match[1],
