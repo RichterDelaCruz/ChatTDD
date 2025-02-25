@@ -29,6 +29,7 @@ export function FolderTree({ files, onRemoveFile, onRemoveFolder }: FolderTreePr
       const parts = path.split('/');
       let current = root;
 
+      // Process each part of the path
       parts.slice(0, -1).forEach(part => {
         if (!current[part]) {
           current[part] = {
@@ -38,19 +39,37 @@ export function FolderTree({ files, onRemoveFile, onRemoveFolder }: FolderTreePr
             children: []
           };
         }
-        current = current[part].children as { [key: string]: FileNode };
+        current = (current[part].children || []).reduce((acc, child) => {
+          acc[child.name] = child;
+          return acc;
+        }, {} as { [key: string]: FileNode });
       });
 
       const fileName = parts[parts.length - 1];
-      current[fileName] = {
-        name: fileName,
-        path: path,
-        type: 'file',
-        fileId: file.id
-      };
+      if (!current[fileName]) {
+        current[fileName] = {
+          name: fileName,
+          path: path,
+          type: 'file',
+          fileId: file.id
+        };
+      }
     });
 
-    return Object.values(root);
+    // Convert the tree object to array format
+    const convertToArray = (node: { [key: string]: FileNode }): FileNode[] => {
+      return Object.values(node).map(n => ({
+        ...n,
+        children: n.children ? convertToArray(
+          n.children.reduce((acc, child) => {
+            acc[child.name] = child;
+            return acc;
+          }, {} as { [key: string]: FileNode })
+        ) : undefined
+      }));
+    };
+
+    return convertToArray(root);
   };
 
   const toggleFolder = (path: string) => {
