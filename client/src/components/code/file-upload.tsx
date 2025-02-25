@@ -21,29 +21,29 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
 
   const uploadMutation = useMutation({
     mutationFn: async (files: File[]) => {
-      // Log received files and their paths
+      // Log all files with their full paths for debugging
       console.log('Files to process:', files.map(f => ({
         name: f.name,
-        path: f.webkitRelativePath,
+        webkitRelativePath: f.webkitRelativePath,
         type: f.type
       })));
 
       const results = [];
 
       for (const file of files) {
+        // Get full path including folder structure
+        const fullPath = file.webkitRelativePath || file.name;
+        console.log('Processing file:', { name: file.name, path: fullPath });
+
         const fileContent = await file.text();
         const fileHash = await generateFileHash(fileContent);
 
-        // Use webkitRelativePath for folder structure
-        const filePath = file.webkitRelativePath || file.name;
-        console.log('Processing:', { name: file.name, path: filePath });
-
         const res = await apiRequest("POST", "/api/files", {
           name: file.name,
-          path: filePath,
+          path: fullPath, // Use the full path with folder structure
           content: fileContent,
           hash: fileHash,
-          structure: analyzeCode(fileContent, file.name)
+          structure: analyzeCode(fileContent)
         });
 
         const result = await res.json();
@@ -134,7 +134,6 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
   );
 }
 
-// Generate a SHA-256 hash of the file content
 async function generateFileHash(content: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(content);
@@ -143,8 +142,7 @@ async function generateFileHash(content: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// Basic code analysis
-function analyzeCode(content: string, fileName: string): { functions: any[]; classes: any[] } {
+function analyzeCode(content: string): { functions: any[]; classes: any[] } {
   const functions = [];
   const classes = [];
   return { functions, classes };
