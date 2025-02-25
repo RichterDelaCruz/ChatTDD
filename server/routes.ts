@@ -274,7 +274,7 @@ Explanation:
 [Explain the reasoning behind this test case and why it's important]
 
 Selected Files:
-${filesAnalyzed.join('\n')}
+${filesAnalyzed.length > 0 ? filesAnalyzed.join('\n') : 'No files selected'}
 
 ${folderStructure ? `\nProject Structure:\n${folderStructure}\n` : ''}
 ${codeContext ? `\nRelevant Code Context:\n${codeContext}` : ''}`
@@ -293,6 +293,16 @@ ${codeContext ? `\nRelevant Code Context:\n${codeContext}` : ''}`
         }
       ];
 
+      // Add debug info about which files are being used
+      res.write(`data: ${JSON.stringify({
+        debug: {
+          selectedFiles: filesAnalyzed,
+          hasCodeContext: !!codeContext,
+          hasFolderStructure: !!folderStructure
+        }
+      })}\n\n`);
+
+      // Rest of the streaming response handling remains the same
       const requestBody = {
         model: "deepseek-coder",
         messages,
@@ -301,12 +311,7 @@ ${codeContext ? `\nRelevant Code Context:\n${codeContext}` : ''}`
         stream: true
       };
 
-      // Set up streaming response
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-
-      console.log("Sending request to DeepSeek");
+      console.log("Sending request to DeepSeek with selected files:", filesAnalyzed);
       const response = await fetch(DEEPSEEK_API_ENDPOINT, {
         method: "POST",
         headers: {
@@ -326,7 +331,6 @@ ${codeContext ? `\nRelevant Code Context:\n${codeContext}` : ''}`
         throw new Error("No response body from DeepSeek API");
       }
 
-      console.log("Starting response stream");
       response.body.on('data', chunk => {
         const lines = chunk.toString().split('\n');
         for (const line of lines) {
@@ -362,15 +366,6 @@ ${codeContext ? `\nRelevant Code Context:\n${codeContext}` : ''}`
         }
         res.end();
       });
-
-      // Add debug info to the final response
-      res.write(`data: ${JSON.stringify({
-        debug: {
-          filesAnalyzed,
-          folderStructure,
-          relevantContext: codeContext
-        }
-      })}\n\n`);
 
     } catch (error: any) {
       console.error("Error in DeepSeek API route:", error);
