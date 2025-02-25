@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertCodeFileSchema, insertTestCaseSchema, insertChatMessageSchema } from "@shared/schema";
 import fetch from "node-fetch";
+import { embeddingsService } from "./services/embeddings";
 
 const DEEPSEEK_API_ENDPOINT = "https://api.deepseek.com/v1/chat/completions";
 
@@ -14,6 +15,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ error: "Invalid file data" });
     }
     const file = await storage.createCodeFile(parsed.data);
+
+    // Index the file for similarity search
+    await embeddingsService.addToIndex(file);
+
     res.json(file);
   });
 
@@ -66,9 +71,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(messages);
   });
 
-  // DeepSeek API Proxy
+  // DeepSeek API Proxy with RAG
   app.post("/api/deepseek/generate", async (req, res) => {
     try {
+      // Find relevant code snippets
+      const similarCode = await embeddingsService.findSimilarCode(req.body.prompt);
+      const codeContext = similarCode
+        .map(({ content }) => content)
+        .join('\n\n');
+
       const response = await fetch(DEEPSEEK_API_ENDPOINT, {
         method: "POST",
         headers: {
@@ -79,7 +90,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           model: "deepseek-coder",
           messages: [{
             role: "system",
-            content: "You are a Test-Driven Development expert. Generate test cases that help verify functionality. Focus on edge cases, error conditions, and important behavioral aspects. DO NOT provide implementation code."
+            content: `You are a Test-Driven Development expert. Generate one specific test case at a time. 
+                     Focus on edge cases, error conditions, and important behavioral aspects.
+                     Consider the following code context when generating test suggestions:
+
+                     ${codeContext}`
           }, {
             role: "user",
             content: req.body.prompt
@@ -89,7 +104,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
       });
 
-      // Get response body as text first
       const responseText = await response.text();
       let responseData;
 

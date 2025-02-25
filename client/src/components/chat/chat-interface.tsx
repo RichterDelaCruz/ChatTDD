@@ -5,7 +5,7 @@ import { type ChatMessage } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send } from "lucide-react";
+import { Send, RotateCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { generateTestCaseRecommendation } from "@/lib/deep-seek";
 
@@ -16,6 +16,7 @@ interface ChatInterfaceProps {
 export function ChatInterface({ fileId }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
   const { toast } = useToast();
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ["/api/files", fileId, "messages"],
@@ -35,6 +36,7 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
       });
 
       try {
+        setIsGenerating(true);
         // Generate test case recommendation
         const recommendation = await generateTestCaseRecommendation(content);
 
@@ -46,6 +48,8 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
       } catch (error: any) {
         console.error("Error in chat:", error);
         throw new Error(error.message || "Failed to get AI response");
+      } finally {
+        setIsGenerating(false);
       }
     },
     onSuccess: () => {
@@ -68,6 +72,12 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
     }
   };
 
+  const handleNextSuggestion = () => {
+    if (input.trim()) {
+      sendMessage.mutate("Generate another test case suggestion for: " + input.trim());
+    }
+  };
+
   return (
     <div className="flex flex-col h-[600px]">
       <ScrollArea className="flex-1 p-4">
@@ -83,6 +93,12 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
             {message.content}
           </div>
         ))}
+        {isGenerating && (
+          <div className="flex items-center justify-center p-4 text-muted-foreground">
+            <RotateCw className="h-4 w-4 animate-spin mr-2" />
+            Generating suggestion...
+          </div>
+        )}
       </ScrollArea>
 
       <form onSubmit={handleSubmit} className="p-4 border-t">
@@ -93,13 +109,26 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
             placeholder="Ask for test case recommendations..."
             className="flex-1"
           />
-          <Button 
-            type="submit"
-            disabled={sendMessage.isPending}
-            className="px-3"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button 
+              type="submit"
+              disabled={sendMessage.isPending || isGenerating}
+              className="px-3"
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+            {messages.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleNextSuggestion}
+                disabled={sendMessage.isPending || isGenerating}
+                className="px-3"
+              >
+                <RotateCw className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
       </form>
     </div>
