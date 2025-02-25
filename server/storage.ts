@@ -11,6 +11,7 @@ export interface IStorage {
   createCodeFile(file: InsertCodeFile): Promise<CodeFile>;
   updateCodeFile(update: { id: number; content: string; hash: string }): Promise<CodeFile>;
   listCodeFiles(): Promise<CodeFile[]>;
+  deleteCodeFile(id: number): Promise<void>; // Add delete method
 
   // Test Cases
   getTestCases(fileId: number): Promise<TestCase[]>;
@@ -78,6 +79,14 @@ export class MemStorage implements IStorage {
 
     this.codeFiles.set(update.id, updatedFile);
     return updatedFile;
+  }
+
+  async deleteCodeFile(id: number): Promise<void> {
+    const file = this.codeFiles.get(id);
+    if (file) {
+      this.fileNameToId.delete(file.name);
+      this.codeFiles.delete(id);
+    }
   }
 
   async listCodeFiles(): Promise<CodeFile[]> {
