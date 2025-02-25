@@ -27,7 +27,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Index the file for similarity search
       try {
-        await embeddingsService.addToIndex(file);
+        const filePath = req.body.path || file.name;
+        await embeddingsService.addToIndex(file, filePath);
       } catch (error) {
         console.error("Failed to index file:", error);
         // Continue anyway since the file is saved
@@ -211,7 +212,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Limit context size
+      // Format the code context with file paths and relationships
       let codeContext = similarCode
         .map(({ content, similarity, filePath, relatedFiles }) =>
           `[File: ${filePath}, Similarity: ${(similarity * 100).toFixed(1)}%]\n${content}${
@@ -298,11 +299,8 @@ ${codeContext ? `Here's the relevant code context (most similar sections first):
       }
 
       console.log("Starting response stream");
-
-      // Handle the stream
       response.body.on('data', chunk => {
         const lines = chunk.toString().split('\n');
-
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data = line.slice(6);

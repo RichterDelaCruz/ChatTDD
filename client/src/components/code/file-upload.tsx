@@ -106,6 +106,7 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
       "text/*": [".js", ".ts", ".jsx", ".tsx", ".py", ".java", ".cpp", ".cs"]
     },
     multiple: true,
+    noClick: false,
     disabled: isProcessing
   });
 
