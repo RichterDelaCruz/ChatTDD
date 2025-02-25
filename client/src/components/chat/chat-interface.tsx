@@ -70,7 +70,7 @@ export function ChatInterface({ activeFileIds, isProcessingFiles }: ChatInterfac
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ 
             prompt: content,
-            fileIds: activeFileIds // Send all active file IDs for context
+            fileIds: activeFileIds
           })
         });
 
@@ -164,25 +164,35 @@ export function ChatInterface({ activeFileIds, isProcessingFiles }: ChatInterfac
   ];
 
   const formatAssistantMessage = (content: string) => {
-    return content
-      .split('\n')
-      .map((line, i, arr) => {
-        if (line.endsWith(':')) {
-          const spacing = i > 0 ? 'mt-4' : '';
-          return (
-            <div key={i} className={`${spacing} font-semibold text-primary`}>
-              {line}
+    const sections = content.split('\n\n').map((section, i) => {
+      const [title, ...lines] = section.split('\n');
+      if (title.endsWith(':')) {
+        return (
+          <div key={i} className={`mb-4 last:mb-0 ${i > 0 ? 'mt-4' : ''}`}>
+            <div className="font-semibold text-primary">{title}</div>
+            <div className="mt-2 text-sm text-muted-foreground">
+              {lines.join('\n')}
             </div>
-          );
-        }
-        return <div key={i} className="ml-4">{line}</div>;
-      });
+          </div>
+        );
+      }
+      return <div key={i} className="mb-2">{section}</div>;
+    });
+
+    return <div className="space-y-2">{sections}</div>;
   };
 
   return (
     <div className="flex flex-col h-[600px]">
       <div className="flex justify-between items-center p-4 border-b">
-        <h2 className="text-lg font-semibold">Test Case Suggestions</h2>
+        <div>
+          <h2 className="text-lg font-semibold">Test Case Suggestions</h2>
+          {activeFileIds.length > 0 && (
+            <p className="text-sm text-muted-foreground">
+              {activeFileIds.length} file{activeFileIds.length !== 1 ? 's' : ''} selected
+            </p>
+          )}
+        </div>
         <Button
           variant="ghost"
           size="sm"
@@ -195,51 +205,55 @@ export function ChatInterface({ activeFileIds, isProcessingFiles }: ChatInterfac
       </div>
 
       <ScrollArea className="flex-1 p-4">
-        {allMessages.map((message, i) => (
-          <div key={i} className="mb-4">
-            <div className={`p-4 rounded-lg ${
-              message.role === "user"
-                ? "bg-primary text-primary-foreground ml-8"
-                : "bg-muted text-muted-foreground mr-8"
+        <div className="max-w-4xl mx-auto space-y-6">
+          {allMessages.map((message, i) => (
+            <div key={i} className={`flex ${
+              message.role === "user" ? "justify-end" : "justify-start"
             }`}>
-              {message.role === "assistant"
-                ? formatAssistantMessage(message.content)
-                : message.content}
+              <div className={`rounded-lg shadow-sm max-w-[80%] ${
+                message.role === "user"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted"
+              } p-4`}>
+                {message.role === "assistant"
+                  ? formatAssistantMessage(message.content)
+                  : message.content}
+              </div>
             </div>
-          </div>
-        ))}
-        {isGenerating && streamedResponse && (
-          <div className="mb-4">
-            <div className="bg-muted text-muted-foreground mr-8 p-4 rounded-lg">
-              {formatAssistantMessage(streamedResponse)}
+          ))}
+          {isGenerating && streamedResponse && (
+            <div className="flex justify-start">
+              <div className="bg-muted rounded-lg shadow-sm max-w-[80%] p-4">
+                {formatAssistantMessage(streamedResponse)}
+              </div>
             </div>
-          </div>
-        )}
-        {isGenerating && !streamedResponse && (
-          <div className="flex items-center justify-center p-4 text-muted-foreground">
-            <RotateCw className="h-4 w-4 animate-spin mr-2" />
-            {activeFileIds.length > 0 ? 
-              "Analyzing codebase & generating suggestion..." :
-              "Generating suggestion..."}
-          </div>
-        )}
+          )}
+          {isGenerating && !streamedResponse && (
+            <div className="flex items-center justify-center py-8 text-muted-foreground">
+              <RotateCw className="h-5 w-5 animate-spin mr-2" />
+              {activeFileIds.length > 0 ? 
+                "Analyzing code & generating test case..." :
+                "Generating test case..."}
+            </div>
+          )}
+        </div>
       </ScrollArea>
 
-      <form onSubmit={handleSubmit} className="p-4 border-t space-y-4">
-        <div className="flex gap-2">
+      <div className="border-t p-4 space-y-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <form onSubmit={handleSubmit} className="flex gap-2">
           <Textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={activeFileIds.length > 0 ? 
               "Ask for test case recommendations..." :
               "Ask any question about testing..."}
-            className="flex-1"
+            className="min-h-[60px] max-h-[200px]"
             disabled={isGenerating}
           />
           <Button
             type="submit"
             disabled={sendMessage.isPending || isGenerating}
-            className="px-3"
+            className="px-3 self-end h-[60px]"
           >
             {isGenerating ? (
               <RotateCw className="h-4 w-4 animate-spin" />
@@ -247,7 +261,7 @@ export function ChatInterface({ activeFileIds, isProcessingFiles }: ChatInterfac
               <Send className="h-4 w-4" />
             )}
           </Button>
-        </div>
+        </form>
 
         <Button
           type="button"
@@ -259,7 +273,7 @@ export function ChatInterface({ activeFileIds, isProcessingFiles }: ChatInterfac
           <Plus className="h-4 w-4 mr-2" />
           Suggest another test case
         </Button>
-      </form>
+      </div>
     </div>
   );
 }
