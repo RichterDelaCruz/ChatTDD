@@ -4,7 +4,6 @@ import { storage } from "./storage";
 import { insertCodeFileSchema, insertTestCaseSchema, insertChatMessageSchema } from "@shared/schema";
 import fetch from "node-fetch";
 
-
 const DEEPSEEK_API_ENDPOINT = "https://api.deepseek.com/v1/completions";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -77,23 +76,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
           "Authorization": `Bearer ${process.env.DEEPSEEK_API_KEY}`
         },
         body: JSON.stringify({
-          prompt: req.body.prompt,
+          model: "deepseek-coder",
+          messages: [{
+            role: "system",
+            content: "You are a Test-Driven Development expert. Generate test cases that help verify functionality. Focus on edge cases, error conditions, and important behavioral aspects. DO NOT provide implementation code."
+          }, {
+            role: "user",
+            content: req.body.prompt
+          }],
           max_tokens: 1000,
           temperature: 0.7
         })
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(`DeepSeek API Error: ${error.message || response.statusText}`);
+      let error;
+      try {
+        const errorData = await response.text();
+        error = JSON.parse(errorData);
+      } catch {
+        error = { message: "Failed to parse API response" };
       }
 
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(error.message || response.statusText);
+      }
+
+      // Parse response as text first to handle potential JSON errors
+      const responseText = await response.text();
+      const data = JSON.parse(responseText);
       res.json(data);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error calling DeepSeek API:", error);
       res.status(500).json({ 
-        error: "Failed to generate test case recommendations. Please try again later." 
+        error: error.message || "Failed to generate test case recommendations"
       });
     }
   });
