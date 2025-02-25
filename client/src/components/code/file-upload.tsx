@@ -22,11 +22,13 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
       const content = await file.text();
-      const structure = analyzeCode(content);
+      const hash = await generateFileHash(content);
+      const structure = analyzeCode(content, file.name);
 
       const res = await apiRequest("POST", "/api/files", {
         name: file.name,
         content,
+        hash,
         structure
       });
       return res.json();
@@ -131,18 +133,48 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
   );
 }
 
-function analyzeCode(content: string): { functions: any[]; classes: any[] } {
-  // Simple regex-based code analysis
-  const functions = Array.from(content.matchAll(/function\s+(\w+)/g))
-    .map((match, i) => ({
-      name: match[1],
-      line: content.slice(0, match.index).split("\n").length
+// Generate a SHA-256 hash of the file content
+async function generateFileHash(content: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(content);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function analyzeCode(content: string, fileName: string): { functions: any[]; classes: any[] } {
+  // Enhanced code analysis based on file type
+  const fileType = fileName.split('.').pop()?.toLowerCase();
+
+  // Default patterns
+  let funcPattern = /function\s+(\w+)/g;
+  let classPattern = /class\s+(\w+)/g;
+
+  // Language-specific patterns
+  switch (fileType) {
+    case 'py':
+      funcPattern = /def\s+(\w+)/g;
+      break;
+    case 'java':
+    case 'cs':
+      funcPattern = /(public|private|protected)?\s*(static)?\s*\w+\s+(\w+)\s*\([^)]*\)/g;
+      break;
+    case 'ts':
+    case 'tsx':
+      funcPattern = /(function\s+(\w+)|const\s+(\w+)\s*=\s*(\([^)]*\)\s*=>|\([^)]*\)\s*{))/g;
+      break;
+  }
+
+  const functions = Array.from(content.matchAll(funcPattern))
+    .map(match => ({
+      name: match[1] || match[3], // Handle both function name groups
+      line: content.slice(0, match.index).split('\n').length
     }));
 
-  const classes = Array.from(content.matchAll(/class\s+(\w+)/g))
-    .map((match, i) => ({
+  const classes = Array.from(content.matchAll(classPattern))
+    .map(match => ({
       name: match[1],
-      line: content.slice(0, match.index).split("\n").length
+      line: content.slice(0, match.index).split('\n').length
     }));
 
   return { functions, classes };
