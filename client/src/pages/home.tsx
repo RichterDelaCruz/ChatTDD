@@ -6,24 +6,9 @@ import { useState } from "react";
 import { type CodeFile } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useQuery } from "@tanstack/react-query";
 
 export default function Home() {
   const [selectedFile, setSelectedFile] = useState<CodeFile | null>(null);
-
-  const { data: allFiles = [] } = useQuery({
-    queryKey: ["/api/files"],
-    queryFn: async () => {
-      const res = await fetch("/api/files");
-      if (!res.ok) throw new Error("Failed to fetch files");
-      return res.json() as Promise<CodeFile[]>;
-    }
-  });
-
-  // Set the first file as selected if we have files but none selected
-  if (allFiles.length > 0 && !selectedFile) {
-    setSelectedFile(allFiles[0]);
-  }
 
   return (
     <div className="min-h-screen bg-background p-4 lg:p-8">
@@ -40,11 +25,7 @@ export default function Home() {
 
             {selectedFile && (
               <Card className="p-6">
-                <CodeViewer 
-                  currentFile={selectedFile} 
-                  allFiles={allFiles}
-                  onFileSelect={setSelectedFile}
-                />
+                <CodeViewer file={selectedFile} />
               </Card>
             )}
           </div>
