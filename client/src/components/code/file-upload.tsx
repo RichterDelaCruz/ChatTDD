@@ -24,9 +24,11 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
       // First, analyze the entire project structure
       const projectFiles = await Promise.all(
         files.map(async (file) => {
-          // Ensure we get the relative path, fallback to filename if not available
+          // Get the relative path including root folder
           const relativePath = (file as any).webkitRelativePath || file.name;
-          const path = relativePath.split('/').slice(1).join('/'); // Remove the root folder name
+          // Keep the root folder
+          const pathParts = relativePath.split('/');
+          const path = pathParts.length > 1 ? relativePath : file.name;
 
           console.log('Processing file:', { 
             name: file.name, 

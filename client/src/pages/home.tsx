@@ -1,10 +1,9 @@
 import { FileUpload } from "@/components/code/file-upload";
+import { ProjectTree } from "@/components/code/project-tree";
 import { ChatInterface } from "@/components/chat/chat-interface";
 import { useState } from "react";
 import { type CodeFile } from "@shared/schema";
 import { Card } from "@/components/ui/card";
-import { X } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 interface FileWithPath extends CodeFile {
   path: string;
@@ -27,6 +26,10 @@ export default function Home() {
     setActiveFiles(prev => prev.filter(f => f.id !== fileId));
   };
 
+  const handleRemoveFolder = (folderPath: string) => {
+    setActiveFiles(prev => prev.filter(f => !f.path.startsWith(folderPath)));
+  };
+
   return (
     <div className="min-h-screen bg-background p-4 lg:p-8">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -44,25 +47,14 @@ export default function Home() {
             </Card>
 
             {activeFiles.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Active Codebase Files:</p>
-                {activeFiles.map(file => (
-                  <div key={file.id} className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold">{file.name}</p>
-                      <p className="text-xs text-muted-foreground">{file.path}</p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleRemoveFile(file.id)}
-                      className="hover:bg-destructive hover:text-destructive-foreground"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
+              <Card className="p-6">
+                <h2 className="text-lg font-semibold mb-4">Project Structure</h2>
+                <ProjectTree 
+                  files={activeFiles}
+                  onRemoveFile={handleRemoveFile}
+                  onRemoveFolder={handleRemoveFolder}
+                />
+              </Card>
             )}
           </div>
 
