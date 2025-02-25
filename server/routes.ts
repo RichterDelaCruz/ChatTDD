@@ -139,6 +139,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         throw new Error("DEEPSEEK_API_KEY not configured");
       }
 
+      // Get previous messages for context
+      const fileId = req.body.fileId;
+      let previousMessages = [];
+      if (fileId) {
+        previousMessages = await storage.getChatMessages(fileId);
+      }
+
       // Find relevant code snippets
       let similarCode = [];
       try {
@@ -160,11 +167,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         codeContext = codeContext.substring(0, MAX_CONTEXT_LENGTH) + "...";
       }
 
-      const requestBody = {
-        model: "deepseek-coder",
-        messages: [{
-          role: "system",
-          content: `You are a Test-Driven Development expert. Help users write high-quality test cases.
+      const systemMessage = {
+        role: "system",
+        content: `You are a Test-Driven Development expert. Help users write high-quality test cases.
 
 IMPORTANT: Generate EXACTLY ONE test case per response. No more, no less.
 
@@ -186,10 +191,24 @@ Rules:
 4. Use line breaks between sections for clarity
 
 ${codeContext ? `Here's the relevant code context (most similar sections first):\n\n${codeContext}` : ''}`
-        }, {
+      };
+
+      // Include previous conversation messages for context
+      const messages = [
+        systemMessage,
+        ...previousMessages.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        })),
+        {
           role: "user",
           content: req.body.prompt
-        }],
+        }
+      ];
+
+      const requestBody = {
+        model: "deepseek-coder",
+        messages,
         max_tokens: 1000,
         temperature: 0.7,
         stream: true

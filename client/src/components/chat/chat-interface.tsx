@@ -63,11 +63,14 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
         setIsGenerating(true);
         setStreamedResponse("");
 
-        // Stream response from DeepSeek
+        // Stream response from DeepSeek with fileId for context
         const response = await fetch("/api/deepseek/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: content })
+          body: JSON.stringify({ 
+            prompt: content,
+            fileId: fileId 
+          })
         });
 
         if (!response.ok) {

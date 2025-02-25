@@ -23,6 +23,16 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
     mutationFn: async (file: File) => {
       const content = await file.text();
       const hash = await generateFileHash(content);
+
+      // First check if file exists and has changed
+      const existingFiles = await fetch('/api/files').then(res => res.json());
+      const existingFile = existingFiles.find((f: CodeFile) => f.name === file.name);
+
+      if (existingFile && existingFile.hash === hash) {
+        // File exists and hasn't changed, return existing file
+        return existingFile;
+      }
+
       const structure = analyzeCode(content, file.name);
 
       const res = await apiRequest("POST", "/api/files", {
