@@ -91,14 +91,27 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const codeFiles = acceptedFiles.filter(file => {
-      const hasCodeExtension = /\.(js|ts|jsx|tsx|py|java|cpp|cs)$/i.test(file.name);
-      return hasCodeExtension;
+      // Expanded list of code file extensions
+      const codeExtensions = [
+        // Web
+        '.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.scss', '.vue', '.svelte',
+        // Backend
+        '.py', '.rb', '.php', '.java', '.go', '.rs', '.cs', '.cpp', '.c',
+        // Config & Data
+        '.json', '.yaml', '.yml', '.toml', '.xml',
+        // Shell & Scripts
+        '.sh', '.bash', '.zsh', '.fish',
+        // Documentation
+        '.md', '.rst'
+      ];
+
+      return codeExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
     });
 
     if (codeFiles.length === 0) {
       toast({
         title: "No code files found",
-        description: "Upload a folder containing code files (.js, .ts, .py, etc.)",
+        description: "Upload a folder containing code files (JavaScript, TypeScript, Python, etc.)",
         variant: "destructive"
       });
       return;
@@ -128,7 +141,12 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      "text/*": [".js", ".ts", ".jsx", ".tsx", ".py", ".java", ".cpp", ".cs"]
+      "text/*": [
+        ".js", ".jsx", ".ts", ".tsx", ".py", ".rb", ".php", 
+        ".java", ".go", ".rs", ".cs", ".cpp", ".c",
+        ".html", ".css", ".scss", ".json", ".yaml", ".yml",
+        ".md", ".sh", ".vue", ".svelte"
+      ]
     },
     multiple: true,
     noClick: false,
