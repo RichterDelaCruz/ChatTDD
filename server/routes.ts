@@ -2,17 +2,22 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertCodeFileSchema, insertTestCaseSchema, insertChatMessageSchema } from "@shared/schema";
-import fetch from "node-fetch";
 import { embeddingsService } from "./services/embeddings";
 
 const DEEPSEEK_API_ENDPOINT = "https://api.deepseek.com/v1/chat/completions";
 const MAX_CONTEXT_LENGTH = 2000;
-const MAX_SIMILAR_CHUNKS = 2;
+const MAX_SIMILAR_CHUNKS = 3;
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Test endpoint to verify server is running
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "ok" });
+  });
+
   // Code Files
   app.post("/api/files", async (req, res) => {
     try {
+      console.log("Processing file upload request");
       const parsed = insertCodeFileSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ error: "Invalid file data" });
@@ -113,111 +118,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // DeepSeek API Proxy with RAG
+  // DeepSeek API Proxy with RAG (temporarily disabled for debugging)
   app.post("/api/deepseek/generate", async (req, res) => {
     try {
-      let similarCode = [];
-      try {
-        // Find relevant code snippets (limited to 2)
-        similarCode = await embeddingsService.findSimilarCode(req.body.prompt, MAX_SIMILAR_CHUNKS);
-        console.log("Similar code found:", similarCode.map(c => c.fileId));
-      } catch (error) {
-        console.error("Error finding similar code:", error);
-        // Continue without similar code if search fails
-      }
-
-      // Limit context size
-      let codeContext = similarCode
-        .map(({ content }) => content)
-        .join('\n\n');
-
-      if (codeContext.length > MAX_CONTEXT_LENGTH) {
-        codeContext = codeContext.substring(0, MAX_CONTEXT_LENGTH) + "...";
-      }
-
-      const requestBody = {
-        model: "deepseek-coder",
-        messages: [{
-          role: "system",
-          content: `You are a Test-Driven Development expert. Generate exactly ONE specific test case at a time. 
-                   Focus on edge cases, error conditions, and important behavioral aspects.
-                   ${codeContext ? `Consider the following code context:\n\n${codeContext}` : ''}`
-        }, {
-          role: "user",
-          content: req.body.prompt
-        }],
-        max_tokens: 1000,
-        temperature: 0.7,
-        stream: true
-      };
-
-      if (!process.env.DEEPSEEK_API_KEY) {
-        throw new Error("DEEPSEEK_API_KEY not configured");
-      }
-
-      const response = await fetch(DEEPSEEK_API_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.DEEPSEEK_API_KEY}`
-        },
-        body: JSON.stringify(requestBody)
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error || response.statusText);
-      }
-
-      // Set up streaming response
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-
-      const reader = response.body!.getReader();
-      const decoder = new TextDecoder();
-
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n');
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') {
-                res.write('data: [DONE]\n\n');
-                break;
-              }
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.choices[0]?.delta?.content || '';
-                if (content) {
-                  res.write(`data: ${JSON.stringify({ content })}\n\n`);
-                }
-              } catch (e) {
-                console.error('Error parsing SSE data:', e);
-              }
-            }
+      // Temporary simple response for testing
+      res.json({
+        choices: [{
+          message: {
+            content: "Server is functioning correctly. DeepSeek integration temporarily disabled for debugging."
           }
-        }
-      } catch (error) {
-        console.error('Error streaming response:', error);
-        // Don't throw here, just end the response
-      } finally {
-        res.end();
-      }
+        }]
+      });
     } catch (error: any) {
-      console.error("Error in DeepSeek API route:", error);
-      // Ensure we send an error response
-      if (!res.headersSent) {
-        res.status(500).json({ 
-          error: error.message || "Failed to generate test case recommendations"
-        });
-      }
+      console.error("Error in test endpoint:", error);
+      res.status(500).json({
+        error: "Server test endpoint error"
+      });
     }
   });
 

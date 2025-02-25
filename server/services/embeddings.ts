@@ -149,7 +149,7 @@ class EmbeddingsService {
     }
   }
 
-  async findSimilarCode(query: string, k: number = 2): Promise<Array<{ fileId: number, content: string, similarity: number }>> {
+  async findSimilarCode(query: string, k: number = 3): Promise<Array<{ fileId: number, content: string, similarity: number }>> {
     try {
       const queryEmbedding = await this.generateSimpleEmbedding(query);
 
