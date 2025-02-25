@@ -27,49 +27,69 @@ export function FolderTree({ files, onRemoveFile, onRemoveFolder }: FolderTreePr
     files.forEach(file => {
       const path = file.path || file.name;
       const parts = path.split('/');
+
+      // Process each part of the path to build the tree
+      let currentPath = '';
       let current = root;
 
-      // Process each part of the path
-      parts.slice(0, -1).forEach(part => {
-        if (!current[part]) {
-          current[part] = {
+      // Handle all path parts except the last one (which is the file)
+      for (let i = 0; i < parts.length - 1; i++) {
+        const part = parts[i];
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+
+        if (!current[currentPath]) {
+          current[currentPath] = {
             name: part,
-            path: part,
+            path: currentPath,
             type: 'folder',
             children: []
           };
         }
-        current = (current[part].children || []).reduce((acc, child) => {
-          acc[child.name] = child;
+
+        // Ensure we have a children array
+        if (!current[currentPath].children) {
+          current[currentPath].children = [];
+        }
+
+        // Move to the next level
+        const nextLevel = current[currentPath].children!.reduce((acc, child) => {
+          acc[child.path] = child;
           return acc;
         }, {} as { [key: string]: FileNode });
-      });
 
+        current = nextLevel;
+      }
+
+      // Add the file to its parent folder
+      const parentPath = parts.slice(0, -1).join('/');
       const fileName = parts[parts.length - 1];
-      if (!current[fileName]) {
-        current[fileName] = {
+      const filePath = path;
+
+      if (parentPath && root[parentPath]) {
+        // Add to parent folder's children
+        root[parentPath].children!.push({
           name: fileName,
-          path: path,
+          path: filePath,
+          type: 'file',
+          fileId: file.id
+        });
+      } else {
+        // Root level file
+        root[filePath] = {
+          name: fileName,
+          path: filePath,
           type: 'file',
           fileId: file.id
         };
       }
     });
 
-    // Convert the tree object to array format
-    const convertToArray = (node: { [key: string]: FileNode }): FileNode[] => {
-      return Object.values(node).map(n => ({
-        ...n,
-        children: n.children ? convertToArray(
-          n.children.reduce((acc, child) => {
-            acc[child.name] = child;
-            return acc;
-          }, {} as { [key: string]: FileNode })
-        ) : undefined
-      }));
-    };
-
-    return convertToArray(root);
+    // Convert to array and sort (folders first, then files)
+    return Object.values(root)
+      .sort((a, b) => {
+        if (a.type === b.type) return a.name.localeCompare(b.name);
+        return a.type === 'folder' ? -1 : 1;
+      });
   };
 
   const toggleFolder = (path: string) => {
@@ -113,7 +133,12 @@ export function FolderTree({ files, onRemoveFile, onRemoveFolder }: FolderTreePr
           </div>
           {isExpanded && node.children && (
             <div className="pl-6 space-y-1">
-              {node.children.map(child => renderNode(child, fullPath))}
+              {node.children
+                .sort((a, b) => {
+                  if (a.type === b.type) return a.name.localeCompare(b.name);
+                  return a.type === 'folder' ? -1 : 1;
+                })
+                .map(child => renderNode(child, fullPath))}
             </div>
           )}
         </div>
@@ -144,7 +169,12 @@ export function FolderTree({ files, onRemoveFile, onRemoveFolder }: FolderTreePr
     <div className="space-y-2">
       <h3 className="text-sm font-medium">Project Structure</h3>
       <div className="space-y-1">
-        {tree.map(node => renderNode(node))}
+        {tree
+          .sort((a, b) => {
+            if (a.type === b.type) return a.name.localeCompare(b.name);
+            return a.type === 'folder' ? -1 : 1;
+          })
+          .map(node => renderNode(node))}
       </div>
     </div>
   );
