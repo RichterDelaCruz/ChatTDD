@@ -21,91 +21,48 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
 
   const uploadMutation = useMutation({
     mutationFn: async (files: File[]) => {
-      // First, analyze the entire project structure
-      const projectFiles = await Promise.all(
-        files.map(async (file) => {
-          // Log the file path to debug
-          console.log('Processing file:', {
-            name: file.name,
-            path: file.webkitRelativePath || file.name,
-            fullPath: file.webkitRelativePath,
-            type: file.type
-          });
+      // Log received files and their paths
+      console.log('Files to process:', files.map(f => ({
+        name: f.name,
+        path: f.webkitRelativePath,
+        type: f.type
+      })));
 
-          return {
-            name: file.name,
-            path: file.webkitRelativePath || file.name, // This contains the full path including folders
-            content: await file.text(),
-            hash: await generateFileHash(await file.text())
-          };
-        })
-      );
-
-      // Extract unique folders from file paths
-      const folders = new Set<string>();
-      projectFiles.forEach(file => {
-        const parts = file.path.split('/');
-        parts.pop(); // Remove filename
-        let currentPath = '';
-        parts.forEach(part => {
-          currentPath = currentPath ? `${currentPath}/${part}` : part;
-          if (currentPath) folders.add(currentPath);
-        });
-      });
-
-      console.log('Folders found:', Array.from(folders));
-
-      // Send the entire project structure first
-      await apiRequest("POST", "/api/project/structure", {
-        files: projectFiles.map(f => ({
-          name: f.name,
-          path: f.path
-        }))
-      });
-
-      // Then process each file
       const results = [];
-      for (const fileInfo of projectFiles) {
-        // Check if file exists and has changed
-        const existingFiles = await fetch('/api/files').then(res => res.json());
-        const existingFile = existingFiles.find((f: CodeFile) => f.name === fileInfo.name);
 
-        if (existingFile && existingFile.hash === fileInfo.hash) {
-          results.push({
-            ...existingFile,
-            path: fileInfo.path // Ensure we preserve the path
-          });
-          continue;
-        }
+      for (const file of files) {
+        const fileContent = await file.text();
+        const fileHash = await generateFileHash(fileContent);
 
-        const structure = analyzeCode(fileInfo.content, fileInfo.name);
+        // Use webkitRelativePath for folder structure
+        const filePath = file.webkitRelativePath || file.name;
+        console.log('Processing:', { name: file.name, path: filePath });
 
         const res = await apiRequest("POST", "/api/files", {
-          name: fileInfo.name,
-          content: fileInfo.content,
-          hash: fileInfo.hash,
-          structure,
-          path: fileInfo.path
+          name: file.name,
+          path: filePath,
+          content: fileContent,
+          hash: fileHash,
+          structure: analyzeCode(fileContent, file.name)
         });
 
         const result = await res.json();
-        results.push({
-          ...result,
-          path: fileInfo.path // Ensure we preserve the path
+        results.push(result);
+
+        setProcessedFiles(prev => {
+          const newCount = prev + 1;
+          setProgress((newCount / totalFiles) * 100);
+          return newCount;
         });
       }
-
-      // Log the final processed files
-      console.log('Processed files:', results.map(f => ({ name: f.name, path: f.path })));
 
       return results;
     },
     onSuccess: (files) => {
       files.forEach(file => onFileSelected(file));
-      setProcessedFiles(prev => {
-        const newCount = prev + 1;
-        setProgress((newCount / totalFiles) * 100);
-        return newCount;
+      toast({
+        title: "Upload complete",
+        description: `Successfully processed ${files.length} files`
       });
     },
     onError: (error) => {
@@ -117,71 +74,25 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
     }
   });
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    const codeFiles = acceptedFiles.filter(file => {
-      // Expanded list of code file extensions
-      const codeExtensions = [
-        // Web
-        '.js', '.jsx', '.ts', '.tsx', '.html', '.css', '.scss', '.vue', '.svelte',
-        // Backend
-        '.py', '.rb', '.php', '.java', '.go', '.rs', '.cs', '.cpp', '.c',
-        // Config & Data
-        '.json', '.yaml', '.yml', '.toml', '.xml',
-        // Shell & Scripts
-        '.sh', '.bash', '.zsh', '.fish',
-        // Documentation
-        '.md', '.rst'
-      ];
-
-      return codeExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
-    });
-
-    if (codeFiles.length === 0) {
-      toast({
-        title: "No code files found",
-        description: "Upload a folder containing code files (JavaScript, TypeScript, Python, etc.)",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // Log initial files received
-    console.log('Initial files:', codeFiles.map(f => ({
-      name: f.name,
-      webkitRelativePath: f.webkitRelativePath,
-      type: f.type
-    })));
-
-    setIsProcessing(true);
-    onProcessingStateChange(true);
-    setTotalFiles(codeFiles.length);
-    setProcessedFiles(0);
-    setProgress(0);
-
-    try {
-      await uploadMutation.mutateAsync(codeFiles);
-
-      toast({
-        title: "Processing complete",
-        description: `Successfully processed ${codeFiles.length} files`
-      });
-    } catch (error) {
-      console.error("Error processing files:", error);
-    } finally {
-      setIsProcessing(false);
-      onProcessingStateChange(false);
-    }
-  }, [uploadMutation, toast, onProcessingStateChange]);
-
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
+    onDrop: async (acceptedFiles) => {
+      setIsProcessing(true);
+      onProcessingStateChange(true);
+      setTotalFiles(acceptedFiles.length);
+      setProcessedFiles(0);
+      setProgress(0);
+
+      try {
+        await uploadMutation.mutateAsync(acceptedFiles);
+      } catch (error) {
+        console.error("Error processing files:", error);
+      } finally {
+        setIsProcessing(false);
+        onProcessingStateChange(false);
+      }
+    },
     accept: {
-      "text/*": [
-        ".js", ".jsx", ".ts", ".tsx", ".py", ".rb", ".php",
-        ".java", ".go", ".rs", ".cs", ".cpp", ".c",
-        ".html", ".css", ".scss", ".json", ".yaml", ".yml",
-        ".md", ".sh", ".vue", ".svelte"
-      ]
+      "text/*": [".js", ".jsx", ".ts", ".tsx", ".py", ".rb", ".php", ".java", ".cs", ".cpp", ".c", ".html", ".css", ".scss", ".json", ".yaml", ".yml", ".md", ".sh", ".vue", ".svelte"]
     },
     multiple: true,
     noClick: false,
@@ -207,7 +118,7 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
             ? `Processing files (${processedFiles}/${totalFiles})...`
             : isDragActive
             ? "Drop the folder here"
-            : "Drag & drop a project folder containing code files, or click to select"}
+            : "Drag & drop a project folder, or click to select"}
         </p>
       </div>
 
@@ -215,7 +126,7 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
         <div className="space-y-2">
           <Progress value={progress} />
           <p className="text-sm text-muted-foreground text-center">
-            Analyzing project structure and generating code embeddings...
+            Processing files...
           </p>
         </div>
       )}
@@ -232,40 +143,9 @@ async function generateFileHash(content: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Basic code analysis
 function analyzeCode(content: string, fileName: string): { functions: any[]; classes: any[] } {
-  // Enhanced code analysis based on file type
-  const fileType = fileName.split('.').pop()?.toLowerCase();
-
-  // Default patterns
-  let funcPattern = /function\s+(\w+)/g;
-  let classPattern = /class\s+(\w+)/g;
-
-  // Language-specific patterns
-  switch (fileType) {
-    case 'py':
-      funcPattern = /def\s+(\w+)/g;
-      break;
-    case 'java':
-    case 'cs':
-      funcPattern = /(public|private|protected)?\s*(static)?\s*\w+\s+(\w+)\s*\([^)]*\)/g;
-      break;
-    case 'ts':
-    case 'tsx':
-      funcPattern = /(function\s+(\w+)|const\s+(\w+)\s*=\s*(\([^)]*\)\s*=>|\([^)]*\)\s*{))/g;
-      break;
-  }
-
-  const functions = Array.from(content.matchAll(funcPattern))
-    .map(match => ({
-      name: match[1] || match[3], // Handle both function name groups
-      line: content.slice(0, match.index).split('\n').length
-    }));
-
-  const classes = Array.from(content.matchAll(classPattern))
-    .map(match => ({
-      name: match[1],
-      line: content.slice(0, match.index).split('\n').length
-    }));
-
+  const functions = [];
+  const classes = [];
   return { functions, classes };
 }
