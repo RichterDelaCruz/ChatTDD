@@ -94,6 +94,10 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
           path: fileInfo.path // Ensure we preserve the path
         });
       }
+
+      // Log the final processed files
+      console.log('Processed files:', results.map(f => ({ name: f.name, path: f.path })));
+
       return results;
     },
     onSuccess: (files) => {
@@ -140,6 +144,13 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
       });
       return;
     }
+
+    // Log initial files received
+    console.log('Initial files:', codeFiles.map(f => ({
+      name: f.name,
+      webkitRelativePath: f.webkitRelativePath,
+      type: f.type
+    })));
 
     setIsProcessing(true);
     onProcessingStateChange(true);
