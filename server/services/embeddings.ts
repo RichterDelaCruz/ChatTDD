@@ -262,32 +262,50 @@ class EmbeddingsService {
 
   async getFolderStructure(fileIds: number[]): Promise<string> {
     const structure = new Map<string, Set<string>>();
+    let result = "Project Structure:\n";
 
     // Build folder structure from file paths
     for (const [filePath, related] of this.fileRelationships.entries()) {
-      const folder = filePath.split('/').slice(0, -1).join('/');
-      if (!structure.has(folder)) {
-        structure.set(folder, new Set());
-      }
-      structure.get(folder)!.add(filePath.split('/').pop()!);
+      const parts = filePath.split('/');
+      const filename = parts.pop()!;
+      const folders = parts;
 
-      // Add related files to their folders
-      for (const relatedPath of related) {
-        const relatedFolder = relatedPath.split('/').slice(0, -1).join('/');
-        if (!structure.has(relatedFolder)) {
-          structure.set(relatedFolder, new Set());
+      // Build nested folder structure
+      let currentPath = "";
+      for (const folder of folders) {
+        currentPath = currentPath ? `${currentPath}/${folder}` : folder;
+        if (!structure.has(currentPath)) {
+          structure.set(currentPath, new Set());
         }
-        structure.get(relatedFolder)!.add(relatedPath.split('/').pop()!);
+      }
+
+      // Add file to its folder
+      const folderPath = folders.join('/');
+      if (folderPath) {
+        structure.get(folderPath)?.add(filename);
+      }
+
+      // Track related files
+      if (related.size > 0) {
+        result += `\nFile Relationships:\n${filename} imports/requires:\n`;
+        related.forEach(relPath => {
+          result += `  - ${relPath}\n`;
+        });
       }
     }
 
-    // Convert to string representation
-    return Array.from(structure.entries())
-      .map(([folder, files]) => {
-        const fileList = Array.from(files).join(', ');
-        return `${folder}/: ${fileList}`;
-      })
-      .join('\n');
+    // Build tree structure
+    let indent = "";
+    for (const [folder, files] of structure.entries()) {
+      const level = folder.split('/').length;
+      indent = "  ".repeat(level - 1);
+      result += `${indent}/${folder}\n`;
+      files.forEach(file => {
+        result += `${indent}  - ${file}\n`;
+      });
+    }
+
+    return result;
   }
 }
 

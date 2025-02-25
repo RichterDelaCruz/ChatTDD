@@ -181,75 +181,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get previous messages for context
       const previousMessages = await storage.getChatMessages();
 
-      // Find relevant code snippets from all active files
-      let similarCode = [];
+      // Get files and build context
+      let codeContext = "";
       let folderStructure = "";
+      let filesAnalyzed: string[] = [];
 
       if (req.body.fileIds?.length > 0) {
         try {
+          // Get folder structure first
+          folderStructure = await embeddingsService.getFolderStructure(req.body.fileIds);
+
           // Get content from all active files
           const files = await Promise.all(
             req.body.fileIds.map(id => storage.getCodeFile(id))
           );
 
-          // Get folder structure context
-          folderStructure = await embeddingsService.getFolderStructure(req.body.fileIds);
+          filesAnalyzed = files.filter(f => f).map(f => f!.name);
 
           // Search for similar code in each file
+          const similarCode = [];
           for (const file of files) {
             if (!file) continue;
             const similar = await embeddingsService.findSimilarCode(
               req.body.prompt,
-              Math.floor(MAX_SIMILAR_CHUNKS / files.length) // Distribute chunks among files
+              Math.floor(MAX_SIMILAR_CHUNKS / files.length)
             );
             similarCode.push(...similar);
           }
 
-          console.log("Found similar code chunks:", similarCode.length);
+          // Format code context
+          if (similarCode.length > 0) {
+            codeContext = "Relevant Code Sections:\n\n" + similarCode
+              .map(({ content, similarity, filePath, relatedFiles }) =>
+                `File: ${filePath}\n` +
+                `Similarity: ${(similarity * 100).toFixed(1)}%\n` +
+                `${content}\n` +
+                (relatedFiles?.length ? `Related files: ${relatedFiles.join(', ')}\n` : '')
+              )
+              .join('\n---\n\n');
+          }
         } catch (error) {
-          console.error("Error finding similar code:", error);
-          // Continue without similar code if search fails
+          console.error("Error analyzing code:", error);
         }
-      }
-
-      // Format the code context with file paths and relationships
-      let codeContext = similarCode
-        .map(({ content, similarity, filePath, relatedFiles }) =>
-          `[File: ${filePath}, Similarity: ${(similarity * 100).toFixed(1)}%]\n${content}${
-            relatedFiles?.length ? `\nRelated files: ${relatedFiles.join(', ')}` : ''
-          }`
-        )
-        .join('\n\n');
-
-      if (codeContext.length > MAX_CONTEXT_LENGTH) {
-        codeContext = codeContext.substring(0, MAX_CONTEXT_LENGTH) + "...";
       }
 
       const systemMessage = {
         role: "system",
         content: `You are a Test-Driven Development expert. Help users write high-quality test cases.
 
-IMPORTANT: Generate EXACTLY ONE test case per response. No more, no less.
+IMPORTANT: For each response, first analyze the project structure and relationships between files, then provide focused test recommendations.
 
-Format your response strictly as:
-
-Test Description:
-[Brief description of what this test verifies]
-
-Expected Behavior:
-[Clear description of what should happen when the test passes]
-
-Explanation:
-[Additional context about why this test is important and what edge cases it covers]
-
-Rules:
-1. NEVER include code snippets or implementation details
-2. NEVER suggest multiple test cases
-3. Keep each section focused and concise
-4. Use line breaks between sections for clarity
-
-${folderStructure ? `Project Structure:\n${folderStructure}\n\n` : ''}
-${codeContext ? `Here's the relevant code context (most similar sections first):\n\n${codeContext}` : ''}`
+${folderStructure ? `\n${folderStructure}\n` : ''}
+${codeContext ? `\n${codeContext}` : ''}`
       };
 
       // Include previous conversation messages for context
@@ -334,6 +317,15 @@ ${codeContext ? `Here's the relevant code context (most similar sections first):
         }
         res.end();
       });
+
+      // Add debug info to the final response
+      res.write(`data: ${JSON.stringify({
+        debug: {
+          filesAnalyzed,
+          folderStructure,
+          relevantContext: codeContext
+        }
+      })}\n\n`);
 
     } catch (error: any) {
       console.error("Error in DeepSeek API route:", error);
