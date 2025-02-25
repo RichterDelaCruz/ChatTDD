@@ -1,37 +1,31 @@
-// Mock implementation of DeepSeek API integration
 export async function generateTestCaseRecommendation(prompt: string): Promise<string> {
-  // In a real implementation, this would make an API call to DeepSeek
-  // For now, return a mock response
-  await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API delay
+  try {
+    const response = await fetch("/api/deepseek/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        prompt: `You are a Test-Driven Development expert. Based on the following code or requirement, suggest test cases that would help verify the functionality. Focus on edge cases, error conditions, and important behavioral aspects. DO NOT provide implementation code.
 
-  return `Here's a recommended test case based on your input:
+Input: ${prompt}
 
-\`\`\`typescript
-describe('${prompt}', () => {
-  it('should handle the main functionality', () => {
-    // Arrange
-    const input = 'sample input';
-    
-    // Act
-    const result = functionUnderTest(input);
-    
-    // Assert
-    expect(result).toBeDefined();
-  });
+Generate test cases in the following format:
+1. Test case description
+2. Expected behavior
+3. Edge cases to consider`
+      })
+    });
 
-  it('should handle edge cases', () => {
-    // Test empty input
-    expect(functionUnderTest('')).toBeNull();
-    
-    // Test invalid input
-    expect(() => functionUnderTest(null)).toThrow();
-  });
-});
-\`\`\`
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || response.statusText);
+    }
 
-Remember to:
-1. Test both valid and invalid inputs
-2. Check edge cases
-3. Verify error handling
-4. Test any side effects`;
+    const data = await response.json();
+    return data.choices[0].text;
+  } catch (error) {
+    console.error("Error generating test cases:", error);
+    throw new Error("Failed to generate test case recommendations. Please try again later.");
+  }
 }

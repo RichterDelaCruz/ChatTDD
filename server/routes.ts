@@ -2,6 +2,10 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertCodeFileSchema, insertTestCaseSchema, insertChatMessageSchema } from "@shared/schema";
+import fetch from "node-fetch";
+
+
+const DEEPSEEK_API_ENDPOINT = "https://api.deepseek.com/v1/completions";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Code Files
@@ -61,6 +65,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/files/:id/messages", async (req, res) => {
     const messages = await storage.getChatMessages(Number(req.params.id));
     res.json(messages);
+  });
+
+  // DeepSeek API Proxy
+  app.post("/api/deepseek/generate", async (req, res) => {
+    try {
+      const response = await fetch(DEEPSEEK_API_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${process.env.DEEPSEEK_API_KEY}`
+        },
+        body: JSON.stringify({
+          prompt: req.body.prompt,
+          max_tokens: 1000,
+          temperature: 0.7
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(`DeepSeek API Error: ${error.message || response.statusText}`);
+      }
+
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      console.error("Error calling DeepSeek API:", error);
+      res.status(500).json({ 
+        error: "Failed to generate test case recommendations. Please try again later." 
+      });
+    }
   });
 
   const httpServer = createServer(app);
