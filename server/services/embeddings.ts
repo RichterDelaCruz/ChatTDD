@@ -190,12 +190,23 @@ class EmbeddingsService {
   async addToIndex(file: CodeFile, filePath: string) {
     try {
       console.log(`EmbeddingsService: Processing file ${file.id} at ${filePath}`);
+
+      // Remove old chunks for this file if they exist
+      this.localChunks = this.localChunks.filter(chunk => chunk.fileId !== file.id);
+
       const chunks = this.splitIntoChunks(file.content, file.id, filePath);
 
       if (this.pinecone) {
         const index = this.pinecone.Index(this.indexName);
-        const batchSize = 10;
 
+        // Delete old vectors for this file
+        await index.delete1({
+          filter: {
+            fileId: { $eq: file.id }
+          }
+        });
+
+        const batchSize = 10;
         for (let i = 0; i < chunks.length; i += batchSize) {
           const batch = chunks.slice(i, i + batchSize);
           console.log(`Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(chunks.length / batchSize)}`);
@@ -212,7 +223,8 @@ class EmbeddingsService {
                   startLine: chunk.startLine,
                   endLine: chunk.endLine,
                   filePath: chunk.filePath,
-                  relatedFiles: chunk.relatedFiles
+                  relatedFiles: chunk.relatedFiles,
+                  structure: chunk.structure
                 }
               };
             })
@@ -228,9 +240,30 @@ class EmbeddingsService {
         }
       }
 
+      // Update the project structure with the new file
+      const pathParts = filePath.split('/');
+      let currentPath = '';
+      for (let i = 0; i < pathParts.length - 1; i++) {
+        if (currentPath) {
+          currentPath += '/' + pathParts[i];
+        } else {
+          currentPath = pathParts[i];
+        }
+
+        if (!this.projectStructure.has(currentPath)) {
+          this.projectStructure.set(currentPath, new Set());
+        }
+      }
+
+      const parentFolder = pathParts.slice(0, -1).join('/');
+      if (parentFolder) {
+        this.projectStructure.get(parentFolder)?.add(pathParts[pathParts.length - 1]);
+      }
+
       console.log(`EmbeddingsService: Successfully processed file ${file.id}`);
     } catch (error) {
       console.error('EmbeddingsService: Error processing file:', error);
+      // Fall back to local storage
       const chunks = this.splitIntoChunks(file.content, file.id, filePath);
       for (const chunk of chunks) {
         const embedding = await this.generateSimpleEmbedding(chunk.content);
