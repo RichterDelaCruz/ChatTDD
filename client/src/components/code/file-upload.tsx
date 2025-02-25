@@ -27,18 +27,33 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
           // Log the file path to debug
           console.log('Processing file:', {
             name: file.name,
-            path: file.webkitRelativePath,
+            path: file.webkitRelativePath || file.name,
+            fullPath: file.webkitRelativePath,
             type: file.type
           });
 
           return {
             name: file.name,
-            path: file.webkitRelativePath || file.name,
+            path: file.webkitRelativePath || file.name, // This contains the full path including folders
             content: await file.text(),
             hash: await generateFileHash(await file.text())
           };
         })
       );
+
+      // Extract unique folders from file paths
+      const folders = new Set<string>();
+      projectFiles.forEach(file => {
+        const parts = file.path.split('/');
+        parts.pop(); // Remove filename
+        let currentPath = '';
+        parts.forEach(part => {
+          currentPath = currentPath ? `${currentPath}/${part}` : part;
+          if (currentPath) folders.add(currentPath);
+        });
+      });
+
+      console.log('Folders found:', Array.from(folders));
 
       // Send the entire project structure first
       await apiRequest("POST", "/api/project/structure", {
