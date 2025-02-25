@@ -138,7 +138,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Limit context size
       let codeContext = similarCode
-        .map(({ content, similarity }) => 
+        .map(({ content, similarity }) =>
           `[Similarity: ${(similarity * 100).toFixed(1)}%]\n${content}`
         )
         .join('\n\n');
@@ -185,51 +185,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error || response.statusText);
+        const errorText = await response.text();
+        console.error("DeepSeek API error:", errorText);
+        throw new Error(`DeepSeek API error: ${response.status} - ${errorText}`);
+      }
+
+      if (!response.body) {
+        throw new Error("No response body from DeepSeek API");
       }
 
       console.log("Starting response stream");
-      const reader = response.body!.getReader();
-      const decoder = new TextDecoder();
 
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) {
-            res.write('data: [DONE]\n\n');
-            break;
-          }
+      // Handle the stream using .on('data') instead of reader
+      response.body.on('data', chunk => {
+        const lines = chunk.toString().split('\n');
 
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') {
+              res.write('data: [DONE]\n\n');
+              return;
+            }
 
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.choices?.[0]?.delta?.content;
-                if (content) {
-                  res.write(`data: ${JSON.stringify({ content })}\n\n`);
-                }
-              } catch (e) {
-                console.error('Error parsing stream data:', e);
-                continue;
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                res.write(`data: ${JSON.stringify({ content })}\n\n`);
               }
+            } catch (e) {
+              console.error('Error parsing stream data:', e);
             }
           }
         }
-      } catch (error) {
-        console.error('Error streaming response:', error);
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'Error streaming response' });
-          return;
-        }
-      } finally {
-        reader.releaseLock();
+      });
+
+      response.body.on('end', () => {
+        console.log("Stream ended");
         res.end();
-      }
+      });
+
+      response.body.on('error', error => {
+        console.error("Stream error:", error);
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Stream processing error' });
+        }
+        res.end();
+      });
+
     } catch (error: any) {
       console.error("Error in DeepSeek API route:", error);
       if (!res.headersSent) {
