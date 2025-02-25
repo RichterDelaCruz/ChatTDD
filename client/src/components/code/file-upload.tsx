@@ -23,12 +23,16 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
     mutationFn: async (files: File[]) => {
       // First, analyze the entire project structure
       const projectFiles = await Promise.all(
-        files.map(async (file) => ({
-          name: file.name,
-          path: file.webkitRelativePath || file.name,
-          content: await file.text(),
-          hash: await generateFileHash(await file.text())
-        }))
+        files.map(async (file) => {
+          const path = file.webkitRelativePath || file.name;
+          console.log('Processing file:', { name: file.name, path }); // Debug log
+          return {
+            name: file.name,
+            path: path,
+            content: await file.text(),
+            hash: await generateFileHash(await file.text())
+          };
+        })
       );
 
       // Send the entire project structure first
@@ -84,6 +88,8 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
   });
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    console.log('Dropped files:', acceptedFiles.map(f => ({ name: f.name, path: f.webkitRelativePath }))); // Debug log
+
     const codeFiles = acceptedFiles.filter(file => {
       const hasCodeExtension = /\.(js|ts|jsx|tsx|py|java|cpp|cs)$/i.test(file.name);
       return hasCodeExtension;
