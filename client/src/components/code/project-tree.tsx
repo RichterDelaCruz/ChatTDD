@@ -1,12 +1,13 @@
-import { ChevronDown, ChevronRight, Folder, FileCode, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, FileCode } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface ProjectTreeProps {
   files: Array<{ id: number; name: string; path: string }>;
-  onRemoveFile: (fileId: number) => void;
-  onRemoveFolder?: (folderPath: string) => void;
+  selectedFiles: Set<number>;
+  onFileSelect: (fileId: number, selected: boolean) => void;
 }
 
 interface TreeNode {
@@ -17,7 +18,7 @@ interface TreeNode {
   children: { [key: string]: TreeNode };
 }
 
-export function ProjectTree({ files, onRemoveFile, onRemoveFolder }: ProjectTreeProps) {
+export function ProjectTree({ files, selectedFiles, onFileSelect }: ProjectTreeProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
 
   // Build tree structure
@@ -31,7 +32,7 @@ export function ProjectTree({ files, onRemoveFile, onRemoveFolder }: ProjectTree
       // Process each part of the path
       pathParts.forEach((part, index) => {
         const currentPath = pathParts.slice(0, index + 1).join('/');
-        
+
         // If it's the last part, it's a file
         if (index === pathParts.length - 1) {
           currentNode.children[part] = {
@@ -88,19 +89,6 @@ export function ProjectTree({ files, onRemoveFile, onRemoveFolder }: ProjectTree
             {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             <Folder className="h-4 w-4 text-blue-500" />
             <span className="flex-1">{node.name}</span>
-            {onRemoveFolder && node.name && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemoveFolder(node.path);
-                }}
-                className="opacity-0 group-hover:opacity-100 hover:bg-destructive hover:text-destructive-foreground"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            )}
           </div>
           {isExpanded && (
             <div>
@@ -122,21 +110,17 @@ export function ProjectTree({ files, onRemoveFile, onRemoveFolder }: ProjectTree
         key={node.path}
         className={cn(
           "flex items-center gap-2 py-1 px-2 hover:bg-accent rounded group",
-          indent
+          indent,
+          selectedFiles.has(node.id!) && "bg-accent"
         )}
       >
+        <Checkbox 
+          checked={selectedFiles.has(node.id!)}
+          onCheckedChange={(checked) => node.id && onFileSelect(node.id, checked as boolean)}
+          className="data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
+        />
         <FileCode className="h-4 w-4 text-green-500" />
         <span className="flex-1">{node.name}</span>
-        {node.id && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onRemoveFile(node.id!)}
-            className="opacity-0 group-hover:opacity-100 hover:bg-destructive hover:text-destructive-foreground"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
       </div>
     );
   };

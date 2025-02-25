@@ -10,9 +10,10 @@ import { Progress } from "@/components/ui/progress";
 interface FileUploadProps {
   onFileSelected: (file: CodeFile & { path: string }) => void;
   onProcessingStateChange: (isProcessing: boolean) => void;
+  disabled?: boolean;
 }
 
-export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUploadProps) {
+export function FileUpload({ onFileSelected, onProcessingStateChange, disabled }: FileUploadProps) {
   const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -21,12 +22,9 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
 
   const uploadMutation = useMutation({
     mutationFn: async (files: File[]) => {
-      // First, analyze the entire project structure
       const projectFiles = await Promise.all(
         files.map(async (file) => {
-          // Get the relative path including root folder
           const relativePath = (file as any).webkitRelativePath || file.name;
-          // Keep the root folder
           const pathParts = relativePath.split('/');
           const path = pathParts.length > 1 ? relativePath : file.name;
 
@@ -46,10 +44,8 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
         })
       );
 
-      // Determine if this is a folder upload
       const isFolder = projectFiles.some(f => f.path.includes('/'));
 
-      // If it's a folder upload, get all existing files first to clear them
       if (isFolder) {
         const existingFiles = await fetch('/api/files').then(res => res.json());
         for (const file of existingFiles) {
@@ -57,7 +53,6 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
         }
       }
 
-      // Send the project structure
       await apiRequest("POST", "/api/project/structure", {
         files: projectFiles.map(f => ({
           name: f.name,
@@ -65,7 +60,6 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
         }))
       });
 
-      // Process each file
       const results = [];
       for (const fileInfo of projectFiles) {
         const structure = analyzeCode(fileInfo.content, fileInfo.name);
@@ -150,38 +144,43 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
     },
     multiple: true,
     noClick: false,
-    disabled: isProcessing,
-    useFsAccessApi: false // Disable FileSystem Access API to ensure webkitdirectory works
+    disabled: isProcessing || disabled,
+    useFsAccessApi: false 
   });
 
   return (
     <div className="space-y-4">
-      <div
-        {...getRootProps()}
-        className={`
-          border-2 border-dashed rounded-lg p-8
-          flex flex-col items-center justify-center
-          transition-colors
-          ${isDragActive ? "border-primary bg-primary/5" : "border-muted"}
-          ${isProcessing ? "opacity-50 cursor-wait" : "cursor-pointer"}
-        `}
-      >
-        <input 
-          {...getInputProps()} 
-          // @ts-ignore - These attributes are non-standard but needed for directory upload
-          directory=""
-          webkitdirectory=""
-          mozdirectory=""
-        />
-        <Upload className="h-12 w-12 text-muted-foreground mb-4" />
-        <p className="text-center text-muted-foreground">
-          {isProcessing
-            ? `Processing files (${processedFiles}/${totalFiles})...`
-            : isDragActive
-            ? "Drop the folder here"
-            : "Drag & drop a project folder containing code files, or click to select"}
-        </p>
-      </div>
+      {disabled ? (
+        <div className="text-center text-muted-foreground p-4 border-2 border-dashed rounded-lg">
+          Project already loaded. Clear the project to upload a new one.
+        </div>
+      ) : (
+        <div
+          {...getRootProps()}
+          className={`
+            border-2 border-dashed rounded-lg p-8
+            flex flex-col items-center justify-center
+            transition-colors
+            ${isDragActive ? "border-primary bg-primary/5" : "border-muted"}
+            ${isProcessing ? "opacity-50 cursor-wait" : "cursor-pointer"}
+          `}
+        >
+          <input 
+            {...getInputProps()} 
+            directory=""
+            webkitdirectory=""
+            mozdirectory=""
+          />
+          <Upload className="h-12 w-12 text-muted-foreground mb-4" />
+          <p className="text-center text-muted-foreground">
+            {isProcessing
+              ? `Processing files (${processedFiles}/${totalFiles})...`
+              : isDragActive
+              ? "Drop the folder here"
+              : "Drag & drop a project folder containing code files, or click to select"}
+          </p>
+        </div>
+      )}
 
       {isProcessing && (
         <div className="space-y-2">
@@ -195,7 +194,6 @@ export function FileUpload({ onFileSelected, onProcessingStateChange }: FileUplo
   );
 }
 
-// Generate a SHA-256 hash of the file content
 async function generateFileHash(content: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(content);
@@ -205,14 +203,11 @@ async function generateFileHash(content: string): Promise<string> {
 }
 
 function analyzeCode(content: string, fileName: string): { functions: any[]; classes: any[] } {
-  // Enhanced code analysis based on file type
   const fileType = fileName.split('.').pop()?.toLowerCase();
 
-  // Default patterns
   let funcPattern = /function\s+(\w+)/g;
   let classPattern = /class\s+(\w+)/g;
 
-  // Language-specific patterns
   switch (fileType) {
     case 'py':
       funcPattern = /def\s+(\w+)/g;
@@ -229,7 +224,7 @@ function analyzeCode(content: string, fileName: string): { functions: any[]; cla
 
   const functions = Array.from(content.matchAll(funcPattern))
     .map(match => ({
-      name: match[1] || match[3], // Handle both function name groups
+      name: match[1] || match[3], 
       line: content.slice(0, match.index).split('\n').length
     }));
 

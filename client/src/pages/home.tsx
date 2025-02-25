@@ -14,6 +14,7 @@ interface FileWithPath extends CodeFile {
 export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeFiles, setActiveFiles] = useState<FileWithPath[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<Set<number>>(new Set());
 
   const handleFileProcessed = (file: FileWithPath) => {
     setActiveFiles(prev => {
@@ -24,16 +25,21 @@ export default function Home() {
     });
   };
 
-  const handleRemoveFile = (fileId: number) => {
-    setActiveFiles(prev => prev.filter(f => f.id !== fileId));
-  };
-
-  const handleRemoveFolder = (folderPath: string) => {
-    setActiveFiles(prev => prev.filter(f => !f.path.startsWith(folderPath)));
+  const handleFileSelect = (fileId: number, selected: boolean) => {
+    setSelectedFiles(prev => {
+      const next = new Set(prev);
+      if (selected) {
+        next.add(fileId);
+      } else {
+        next.delete(fileId);
+      }
+      return next;
+    });
   };
 
   const handleClearFiles = () => {
     setActiveFiles([]);
+    setSelectedFiles(new Set());
   };
 
   return (
@@ -49,6 +55,7 @@ export default function Home() {
               <FileUpload 
                 onFileSelected={handleFileProcessed}
                 onProcessingStateChange={setIsProcessing}
+                disabled={activeFiles.length > 0}
               />
             </Card>
 
@@ -63,13 +70,13 @@ export default function Home() {
                     className="flex items-center gap-2"
                   >
                     <Trash2 className="h-4 w-4" />
-                    Clear All Files
+                    Clear Project
                   </Button>
                 </div>
                 <ProjectTree 
                   files={activeFiles}
-                  onRemoveFile={handleRemoveFile}
-                  onRemoveFolder={handleRemoveFolder}
+                  selectedFiles={selectedFiles}
+                  onFileSelect={handleFileSelect}
                 />
               </Card>
             )}
@@ -78,7 +85,7 @@ export default function Home() {
           <div>
             <Card className="p-6">
               <ChatInterface 
-                activeFileIds={activeFiles.map(f => f.id)} 
+                activeFileIds={Array.from(selectedFiles)} 
                 isProcessingFiles={isProcessing}
               />
             </Card>
