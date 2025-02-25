@@ -7,7 +7,9 @@ import {
 export interface IStorage {
   // Code Files
   getCodeFile(id: number): Promise<CodeFile | undefined>;
+  findCodeFileByName(name: string): Promise<CodeFile | undefined>;
   createCodeFile(file: InsertCodeFile): Promise<CodeFile>;
+  updateCodeFile(update: { id: number; content: string; hash: string }): Promise<CodeFile>;
   listCodeFiles(): Promise<CodeFile[]>;
 
   // Test Cases
@@ -25,23 +27,57 @@ export class MemStorage implements IStorage {
   private testCases: Map<number, TestCase>;
   private chatMessages: Map<number, ChatMessage>;
   private currentId: { [key: string]: number };
+  private fileNameToId: Map<string, number>;
 
   constructor() {
     this.codeFiles = new Map();
     this.testCases = new Map();
     this.chatMessages = new Map();
     this.currentId = { codeFiles: 1, testCases: 1, chatMessages: 1 };
+    this.fileNameToId = new Map();
   }
 
   async getCodeFile(id: number): Promise<CodeFile | undefined> {
     return this.codeFiles.get(id);
   }
 
+  async findCodeFileByName(name: string): Promise<CodeFile | undefined> {
+    const fileId = this.fileNameToId.get(name);
+    if (fileId) {
+      return this.codeFiles.get(fileId);
+    }
+    return undefined;
+  }
+
   async createCodeFile(file: InsertCodeFile): Promise<CodeFile> {
     const id = this.currentId.codeFiles++;
-    const codeFile: CodeFile = { ...file, id };
+    const codeFile: CodeFile = {
+      ...file,
+      id,
+      version: 1,
+      lastUpdated: new Date()
+    };
     this.codeFiles.set(id, codeFile);
+    this.fileNameToId.set(file.name, id);
     return codeFile;
+  }
+
+  async updateCodeFile(update: { id: number; content: string; hash: string }): Promise<CodeFile> {
+    const file = await this.getCodeFile(update.id);
+    if (!file) {
+      throw new Error(`File with id ${update.id} not found`);
+    }
+
+    const updatedFile: CodeFile = {
+      ...file,
+      content: update.content,
+      hash: update.hash,
+      version: file.version + 1,
+      lastUpdated: new Date()
+    };
+
+    this.codeFiles.set(update.id, updatedFile);
+    return updatedFile;
   }
 
   async listCodeFiles(): Promise<CodeFile[]> {
