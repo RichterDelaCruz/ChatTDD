@@ -130,6 +130,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         throw new Error(responseData.error?.message || response.statusText);
       }
 
+      // Add debug information about which files were analyzed
+      responseData.debug = {
+        filesAnalyzed: similarCode.map(c => c.fileId),
+        relevantContext: codeContext
+      };
+
       res.json(responseData);
     } catch (error: any) {
       console.error("Error calling DeepSeek API:", error);

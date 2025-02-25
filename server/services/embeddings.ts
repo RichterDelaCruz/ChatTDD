@@ -58,7 +58,7 @@ class EmbeddingsService {
     let norm2 = 0;
 
     // Use all unique words from both texts
-    const allWords = new Set([...freq1.keys(), ...freq2.keys()]);
+    const allWords = Array.from(new Set([...freq1.keys(), ...freq2.keys()]));
 
     allWords.forEach(word => {
       const f1 = freq1.get(word) || 0;
