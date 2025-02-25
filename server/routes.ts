@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { insertCodeFileSchema, insertTestCaseSchema, insertChatMessageSchema } from "@shared/schema";
 import fetch from "node-fetch";
 
-const DEEPSEEK_API_ENDPOINT = "https://api.deepseek.com/v1/completions";
+const DEEPSEEK_API_ENDPOINT = "https://api.deepseek.com/v1/chat/completions";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Code Files
@@ -89,22 +89,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
       });
 
-      let error;
+      // Get response body as text first
+      const responseText = await response.text();
+      let responseData;
+
       try {
-        const errorData = await response.text();
-        error = JSON.parse(errorData);
-      } catch {
-        error = { message: "Failed to parse API response" };
+        responseData = JSON.parse(responseText);
+      } catch (e) {
+        console.error("Failed to parse response:", responseText);
+        throw new Error("Invalid response from DeepSeek API");
       }
 
       if (!response.ok) {
-        throw new Error(error.message || response.statusText);
+        throw new Error(responseData.error?.message || response.statusText);
       }
 
-      // Parse response as text first to handle potential JSON errors
-      const responseText = await response.text();
-      const data = JSON.parse(responseText);
-      res.json(data);
+      res.json(responseData);
     } catch (error: any) {
       console.error("Error calling DeepSeek API:", error);
       res.status(500).json({ 

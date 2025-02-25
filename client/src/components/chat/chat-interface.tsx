@@ -34,14 +34,19 @@ export function ChatInterface({ fileId }: ChatInterfaceProps) {
         content
       });
 
-      // Generate test case recommendation
-      const recommendation = await generateTestCaseRecommendation(content);
+      try {
+        // Generate test case recommendation
+        const recommendation = await generateTestCaseRecommendation(content);
 
-      // Send assistant message
-      await apiRequest("POST", `/api/files/${fileId}/messages`, {
-        role: "assistant",
-        content: recommendation
-      });
+        // Send assistant message
+        await apiRequest("POST", `/api/files/${fileId}/messages`, {
+          role: "assistant",
+          content: recommendation
+        });
+      } catch (error: any) {
+        console.error("Error in chat:", error);
+        throw new Error(error.message || "Failed to get AI response");
+      }
     },
     onSuccess: () => {
       setInput("");
